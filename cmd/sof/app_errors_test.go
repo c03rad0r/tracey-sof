@@ -21,7 +21,7 @@ func TestValidateHappyPathAndInputErrors(t *testing.T) {
 		if err := run(context.Background(), cliCommandArguments("validate", p), &stdout, &stderr); err != nil {
 			t.Fatal(err)
 		}
-		if stdout.String() != "owned, purchase, annotation, and artifact inputs are valid\n" {
+		if stdout.String() != "owned, purchase, annotation, artifact, and trace-policy inputs are valid\n" {
 			t.Fatalf("validate output = %q", stdout.String())
 		}
 	})

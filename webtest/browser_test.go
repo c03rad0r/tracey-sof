@@ -21,11 +21,14 @@ func browserReport() model.Report {
 	key := model.Outpoint{TxID: browserTxID, Vout: 0}
 	return model.Report{SchemaVersion: 1, Network: "mainnet", GeneratedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
 		Chain:     model.Chain{BestBlock: strings.Repeat("0", 64), BestHeight: 170},
+		Policy:    model.TracePolicy{SchemaVersion: 1, MaxHops: 8, MaxTransactions: 250, StopIfPrevoutValueSatsGTE: 500000000, StopIfInputCountGTE: 50, StopIfOutputCountGTE: 50, StopBeforeBlockHeight: 100},
 		Purchases: []model.Purchase{{ID: "historical-atm", Provider: "Public fixture evidence"}},
 		UTXOs:     []model.Target{{Outpoint: key, TxID: browserTxID, Vout: 0, Address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", ValueSats: 100, Status: "documented", Trace: "complete", PurchaseIDs: []string{"historical-atm"}}},
 		Graph: model.Graph{Nodes: []model.GraphNode{{ID: "out:" + key.String(), Kind: "output", Outpoint: key.String(), Address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", ValueSats: 100, Owned: true}, {ID: "tx:" + browserTxID, Kind: "transaction", TxID: browserTxID, PurchaseIDs: []string{"historical-atm"}, TerminalReason: "purchase"}},
 			Edges: []model.GraphEdge{{From: "out:" + key.String(), To: "tx:" + browserTxID, Kind: "funded_by", ValueSats: 100}}},
-		Summary: model.Summary{TotalUTXOs: 1, TotalSats: 100, DocumentedUTXOs: 1, DocumentedSats: 100}, Annotations: input.EmptyAnnotations(), Warnings: []string{}}
+		Summary:     model.Summary{TotalUTXOs: 1, TotalSats: 100, DocumentedUTXOs: 1, DocumentedSats: 100, ReviewUTXOs: 1, UnmatchedEvidence: 1},
+		Evidence:    []model.EvidenceStatus{{Kind: "address", Value: "bc1qneverobserved", PurchaseIDs: []string{"historical-atm"}, Matched: false}},
+		Annotations: input.EmptyAnnotations(), Warnings: []string{}}
 }
 
 func chromiumPath(t *testing.T) string {
@@ -81,7 +84,7 @@ func TestOfflineReportRendersWithoutExternalServices(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	dom := runChromium(t, ctx, chromiumPath(t), html)
-	for _, expected := range []string{`class="sof-node node-output selected-root"`, `class="sof-node node-transaction"`, "1 of 1 current UTXOs selected", "linked purchase record(s)", "graph-viewport", "Redaction: on"} {
+	for _, expected := range []string{`class="sof-node node-output selected-root"`, `class="sof-node node-transaction"`, "1 of 1 current UTXOs selected", "linked purchase record(s)", "graph-viewport", "Redaction: on", "Maximum hops", "Review required", "Purchase-evidence match diagnostics", "Not observed"} {
 		if !strings.Contains(dom, expected) {
 			t.Errorf("rendered DOM lacks %q; output follows:\n%s", expected, dom)
 		}

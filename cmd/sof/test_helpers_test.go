@@ -33,10 +33,13 @@ type cliFakeCore struct {
 	ibd      bool
 	pruned   bool
 
-	mu          sync.Mutex
-	calls       []string
-	wrongRawID  bool
-	missingTxID string
+	mu             sync.Mutex
+	calls          []string
+	wrongRawID     bool
+	missingTxID    string
+	rawHexOverride map[string]string
+	beforeRPC      func(method string, call int) error
+	afterRPC       func(method string, call int)
 }
 
 func cliFixtureDirectory() string {
@@ -97,15 +100,31 @@ func (fake *cliFakeCore) serveHTTP(writer http.ResponseWriter, request *http.Req
 	}
 	fake.mu.Lock()
 	fake.calls = append(fake.calls, call.Method)
+	callNumber := 0
+	for _, method := range fake.calls {
+		if method == call.Method {
+			callNumber++
+		}
+	}
 	fake.mu.Unlock()
 
-	result, err := fake.result(call)
+	var result any
+	var err error
+	if fake.beforeRPC != nil {
+		err = fake.beforeRPC(call.Method, callNumber)
+	}
+	if err == nil {
+		result, err = fake.result(call)
+	}
 	writer.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		_ = json.NewEncoder(writer).Encode(fake.rpcError(-32601, err.Error()))
-		return
+	} else {
+		_ = json.NewEncoder(writer).Encode(map[string]any{"result": result, "error": nil, "id": "tracey-sof"})
 	}
-	_ = json.NewEncoder(writer).Encode(map[string]any{"result": result, "error": nil, "id": "tracey-sof"})
+	if fake.afterRPC != nil {
+		fake.afterRPC(call.Method, callNumber)
+	}
 }
 
 func (fake *cliFakeCore) result(call cliRPCRequest) (any, error) {
@@ -184,8 +203,12 @@ func (fake *cliFakeCore) result(call cliRPCRequest) (any, error) {
 		if fake.wrongRawID {
 			returnedID = fake.tip.TxID
 		}
+		returnedHex := fixture.Hex
+		if override := fake.rawHexOverride[txid]; override != "" {
+			returnedHex = override
+		}
 		return map[string]any{
-			"txid": returnedID, "hex": fixture.Hex, "blockhash": fixture.BlockHash, "blocktime": fixture.BlockTime,
+			"txid": returnedID, "hex": returnedHex, "blockhash": fixture.BlockHash, "blocktime": fixture.BlockTime,
 			"confirmations": 1, "in_active_chain": true, "vin": vin,
 		}, nil
 	default:
@@ -312,6 +335,7 @@ func saveCLIFixtureTrace(t *testing.T, p paths) {
 			Network:       "mainnet",
 			BestBlock:     fixture.BlockHash,
 			BestHeight:    fixture.BlockHeight,
+			Policy:        model.TracePolicy{SchemaVersion: model.SchemaVersion, MaxHops: model.DefaultMaxHops, MaxTransactions: model.DefaultMaxTransactions},
 			Targets:       []model.TargetRef{target},
 			Transactions:  map[string]model.Transaction{firstTransfer: transaction},
 			Boundaries: []model.Boundary{{

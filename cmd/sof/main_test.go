@@ -96,7 +96,7 @@ func TestEnvironmentAndTraceLimits(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
 		t.Setenv("TRACE_MAX_DEPTH", "")
 		t.Setenv("TRACE_MAX_TRANSACTIONS", "")
-		limits, err := traceLimits()
+		limits, err := traceLimits(t.TempDir())
 		if err != nil || limits.MaxDepth != 25 || limits.MaxTransactions != 10000 {
 			t.Fatalf("limits = %+v, error = %v", limits, err)
 		}
@@ -105,7 +105,7 @@ func TestEnvironmentAndTraceLimits(t *testing.T) {
 	t.Run("overrides", func(t *testing.T) {
 		t.Setenv("TRACE_MAX_DEPTH", "7")
 		t.Setenv("TRACE_MAX_TRANSACTIONS", "42")
-		limits, err := traceLimits()
+		limits, err := traceLimits(t.TempDir())
 		if err != nil || limits.MaxDepth != 7 || limits.MaxTransactions != 42 {
 			t.Fatalf("limits = %+v, error = %v", limits, err)
 		}
@@ -126,7 +126,7 @@ func TestEnvironmentAndTraceLimits(t *testing.T) {
 			t.Setenv("TRACE_MAX_DEPTH", "")
 			t.Setenv("TRACE_MAX_TRANSACTIONS", "")
 			t.Setenv(test.name, test.value)
-			_, err := traceLimits()
+			_, err := traceLimits(t.TempDir())
 			if err == nil || !strings.Contains(err.Error(), test.name+" must be a positive integer") {
 				t.Fatalf("error = %v", err)
 			}

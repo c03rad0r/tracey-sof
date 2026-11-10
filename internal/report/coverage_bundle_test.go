@@ -96,7 +96,7 @@ func TestCoverageZIPBytesRejectsOversizedEntryName(t *testing.T) {
 
 func TestCoverageBundleVerifiedArtifactsReproducibleManifest(t *testing.T) {
 	dataDir, outDir, purchases, expected := coverageBundleFixture(t)
-	for _, name := range []string{"README-accountant.txt", "report.json", "report.csv", "report.html", "report.svg", "report.pdf"} {
+	for _, name := range []string{"README-accountant.txt", "report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"} {
 		name := name
 		var source string
 		if name == "README-accountant.txt" {
@@ -256,7 +256,7 @@ func TestCoverageBundleRejectsMissingAndChangedEvidence(t *testing.T) {
 }
 
 func TestCoverageBundleReportsAndInputsErrors(t *testing.T) {
-	requiredReports := []string{"report.json", "report.csv", "report.html", "report.svg", "report.pdf"}
+	requiredReports := []string{"report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"}
 	for _, missing := range requiredReports {
 		t.Run("missing "+missing, func(t *testing.T) {
 			root := t.TempDir()

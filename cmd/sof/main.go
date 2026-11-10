@@ -88,11 +88,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if err := app.report(ctx, *p, false, true); err != nil {
-			return err
-		}
 		purchases, _, _, err := loadInputs(p.dataDir, true)
 		if err != nil {
+			return err
+		}
+		if err := app.report(ctx, *p, false, true); err != nil {
 			return err
 		}
 		return app.export(*p, purchases)
