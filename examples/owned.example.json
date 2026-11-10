@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "network": "mainnet",
+  "addresses": [
+    {"address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "label": "replace with an owned address"}
+  ],
+  "utxos": [],
+  "descriptors": [],
+  "xpubs": []
+}

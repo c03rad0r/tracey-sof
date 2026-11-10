@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tracey-sof:annotations:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "transactions": {"type": "object", "propertyNames": {"pattern": "^[0-9a-f]{64}$"}, "additionalProperties": {"$ref": "#/$defs/annotation"}},
+    "addresses": {"type": "object", "additionalProperties": {"$ref": "#/$defs/annotation"}},
+    "outpoints": {"type": "object", "additionalProperties": {"$ref": "#/$defs/annotation"}},
+    "purchase_links": {"type": "array", "items": {"$ref": "#/$defs/link"}}
+  },
+  "$defs": {
+    "annotation": {"type": "object", "additionalProperties": false, "required": [], "properties": {"label": {"type": "string"}, "note": {"type": "string"}}},
+    "link": {"type": "object", "additionalProperties": false, "required": ["target", "purchase_id", "decision"], "properties": {"target": {"type": "string", "minLength": 1}, "purchase_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"}, "decision": {"enum": ["confirmed", "rejected"]}, "note": {"type": "string"}}}
+  }
+}

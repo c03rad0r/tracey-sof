@@ -1,0 +1,25 @@
+# Private user information and generated artifacts
+/data/
+/out/
+/cache/
+/tmp/
+
+# Local build, dependency, and test state
+/.cache/
+/.tools/
+/bin/
+/coverage/
+
+# Local credentials
+.env
+node.env
+*.cookie
+
+# Editors and operating systems
+.DS_Store
+*.swp
+
+# Dependency downloads must never add credentials or user exports
+*.prof
+*.cover
+*.out
