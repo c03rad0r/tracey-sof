@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Bitcoin UTXO source-of-funds report</title>
+  <style>/*__CSS__*/</style>
+</head>
+<body>
+  <!-- TRACEY.diy presentation inspiration; Copyright (c) 2026 tracey.diy; MIT License. -->
+  <a class="skip-link" href="#report-main">Skip to report</a>
+  <header class="report-header">
+    <div>
+      <p class="eyebrow">LOCAL AUDIT REPORT · NO EXTERNAL SERVICES</p>
+      <h1>Bitcoin UTXO source of funds</h1>
+      <p class="subtitle">Exact transaction ancestry, presented separately from user-supplied purchase evidence and labels.</p>
+    </div>
+    <div class="header-actions" aria-label="Report controls">
+      <button id="privacy-toggle" type="button" aria-pressed="true">Redaction: on</button>
+      <button id="download-svg" type="button">Download SVG</button>
+      <button id="print-report" type="button">Print / Save PDF</button>
+    </div>
+  </header>
+
+  <main id="report-main">
+    <div id="load-notices" class="notice-stack" aria-live="polite"></div>
+
+    <section class="panel summary-panel" aria-labelledby="snapshot-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">BLOCKCHAIN SNAPSHOT</p>
+          <h2 id="snapshot-heading">Report scope</h2>
+        </div>
+        <p id="storage-status" class="storage-status"></p>
+      </div>
+      <dl id="report-metadata" class="metadata-grid"></dl>
+      <div id="summary-cards" class="summary-cards" aria-label="Documentation summary"></div>
+      <details id="warnings-details" class="warnings-details">
+        <summary>Trace warnings and limitations</summary>
+        <ul id="warnings-list"></ul>
+      </details>
+    </section>
+
+    <section class="method-note" aria-labelledby="method-heading">
+      <h2 id="method-heading">How to read this report</h2>
+      <div class="method-grid">
+        <p><strong>Blockchain facts</strong> are outpoints, txids, input/prevout links and values reported by Bitcoin Core. An <code>outpoint → funding transaction</code> edge identifies the transaction that created an output; a <code>transaction → previous output</code> edge identifies an exact spent prevout.</p>
+        <p><strong>User evidence</strong> consists of purchase records, artifacts, labels and notes. Documentation status and traversal completeness are independent. An incomplete trace never proves that documentation does not exist.</p>
+        <p><strong>No ownership inference:</strong> this report does not use change detection, common-input ownership, address clustering or similar heuristics. Transaction ancestry does not allocate satoshis within mixed-input transactions.</p>
+        <p><strong>Redaction:</strong> the privacy control changes the display and SVG export only. The standalone HTML source still contains its embedded report data. Handle the file as sensitive financial information.</p>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="filters-heading">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">CURRENT UTXO SELECTION</p>
+          <h2 id="filters-heading">Filters</h2>
+        </div>
+        <p id="filter-count" class="muted" aria-live="polite"></p>
+      </div>
+      <form id="filters" class="filters">
+        <div class="field">
+          <label for="status-filter">Documentation status</label>
+          <select id="status-filter" name="documentation-status">
+            <option value="all">All documentation statuses</option>
+            <option value="documented">Documented</option>
+            <option value="partially_documented">Partially documented</option>
+            <option value="undocumented">Undocumented</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="purchase-filter">Purchase ID (user evidence)</label>
+          <select id="purchase-filter" name="purchase-id">
+            <option value="all">All purchase IDs</option>
+          </select>
+        </div>
+        <button id="clear-filters" class="secondary-button" type="button">Clear filters</button>
+      </form>
+    </section>
+
+    <section class="panel graph-panel" aria-labelledby="graph-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">EXACT PREVOUT ANCESTRY</p>
+          <h2 id="graph-heading">Source-of-funds graph</h2>
+          <p class="muted">Older ancestry is left; selected current UTXOs are right. Activate a transaction or address node to edit its user label.</p>
+        </div>
+        <div class="graph-controls" aria-label="Graph zoom and pan controls">
+          <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+          <button id="zoom-reset" type="button">Reset view</button>
+          <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+          <button id="pan-left" type="button" aria-label="Pan graph left">←</button>
+          <button id="pan-right" type="button" aria-label="Pan graph right">→</button>
+        </div>
+      </div>
+      <div class="graph-legend" aria-label="Graph legend">
+        <span><i class="legend-mark current"></i>Selected current output</span>
+        <span><i class="legend-mark transaction"></i>Blockchain transaction</span>
+        <span><i class="legend-line funded"></i>Creates outpoint</span>
+        <span><i class="legend-line input"></i>Spends exact prevout</span>
+      </div>
+      <p class="graph-instructions">Drag to pan, use the mouse wheel or buttons to zoom. Keyboard users can Tab to a node and press Enter or Space.</p>
+      <div id="graph-canvas" class="graph-canvas">
+        <svg id="sof-svg" class="sof-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svg-title svg-description">
+          <title id="svg-title">Bitcoin UTXO source-of-funds graph</title>
+          <desc id="svg-description">Selected current outputs appear on the right. Exact funding transactions and previous outputs extend leftward.</desc>
+        </svg>
+      </div>
+      <details class="accessible-graph">
+        <summary>Show graph data as an accessible table</summary>
+        <div class="table-scroll">
+          <table>
+            <caption>Graph nodes after current UTXO filters</caption>
+            <thead><tr><th scope="col">Kind</th><th scope="col">Blockchain identifier / address</th><th scope="col">Value</th><th scope="col">User label</th><th scope="col">Purchase evidence</th></tr></thead>
+            <tbody id="graph-table-body"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="timeline-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">TOPOLOGICAL SEQUENCE</p>
+          <h2 id="timeline-heading">Transaction timeline</h2>
+        </div>
+      </div>
+      <p class="muted">Oldest available ancestry is left and newer transactions are right. Dates, when present, are user purchase-evidence dates—not blockchain confirmation times.</p>
+      <ol id="transaction-timeline" class="timeline"></ol>
+    </section>
+
+    <section class="panel" aria-labelledby="utxos-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">BLOCKCHAIN FACTS + INDEPENDENT EVIDENCE STATUS</p>
+          <h2 id="utxos-heading">Current UTXOs</h2>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <caption id="utxos-caption">Selected unspent transaction outputs</caption>
+          <thead><tr>
+            <th scope="col">Outpoint and transaction label</th>
+            <th scope="col">Address and user label</th>
+            <th scope="col">Value</th>
+            <th scope="col">Documentation</th>
+            <th scope="col">Trace</th>
+            <th scope="col">Purchase evidence</th>
+            <th scope="col">Notes</th>
+          </tr></thead>
+          <tbody id="utxo-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="purchases-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">USER-SUPPLIED RECORDS · NOT BLOCKCHAIN FACTS</p>
+          <h2 id="purchases-heading">Purchase evidence and artifacts</h2>
+        </div>
+      </div>
+      <div id="purchase-list" class="purchase-list"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Generated for offline review. Opening this report makes no network requests. In server mode, a network request occurs only when you explicitly save a label or note.</p>
+    <p>Presentation approach inspired by TRACEY.diy (MIT); analysis and evidence model by tracey-sof.</p>
+  </footer>
+
+  <dialog id="annotation-dialog" aria-labelledby="annotation-heading">
+    <form id="annotation-form" method="dialog">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">USER ANNOTATION · NOT A BLOCKCHAIN FACT</p>
+          <h2 id="annotation-heading">Edit label and note</h2>
+        </div>
+        <button id="annotation-close" class="icon-button" type="button" aria-label="Close annotation dialog">×</button>
+      </div>
+      <input id="annotation-kind" name="kind" type="hidden">
+      <div class="field">
+        <label for="annotation-target">Transaction or address</label>
+        <input id="annotation-target" name="target" type="text" readonly autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="annotation-label">Label</label>
+        <input id="annotation-label" name="label" type="text" maxlength="160" autocomplete="off" placeholder="Optional user label">
+      </div>
+      <div class="field">
+        <label for="annotation-note">Note</label>
+        <textarea id="annotation-note" name="note" rows="4" maxlength="2000" placeholder="Optional source, receipt or review note"></textarea>
+      </div>
+      <p id="annotation-status" class="form-status" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="annotation-cancel" class="secondary-button" type="button">Cancel</button>
+        <button id="annotation-save" type="submit">Save annotation</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>/*__GRAPH_JS__*/</script>
+  <script id="report-data" type="application/json">/*__REPORT_JSON__*/</script>
+  <script id="server-config" type="application/json">/*__SERVER_CONFIG__*/</script>
+  <script>/*__APP_JS__*/</script>
+</body>
+</html>

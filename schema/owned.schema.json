@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tracey-sof:owned:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "network"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "network": {"const": "mainnet"},
+    "addresses": {"type": "array", "items": {"$ref": "#/$defs/address"}},
+    "utxos": {"type": "array", "items": {"$ref": "#/$defs/utxo"}},
+    "descriptors": {"type": "array", "items": {"$ref": "#/$defs/descriptor"}},
+    "xpubs": {"type": "array", "items": {"$ref": "#/$defs/xpub"}}
+  },
+  "$defs": {
+    "txid": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "range": {"type": "array", "prefixItems": [{"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 0}], "items": false},
+    "address": {"type": "object", "additionalProperties": false, "required": ["address"], "properties": {"address": {"type": "string", "minLength": 14}, "label": {"type": "string"}}},
+    "utxo": {"type": "object", "additionalProperties": false, "required": ["txid", "vout"], "properties": {"txid": {"$ref": "#/$defs/txid"}, "vout": {"type": "integer", "minimum": 0, "maximum": 4294967295}, "label": {"type": "string"}}},
+    "descriptor": {"type": "object", "additionalProperties": false, "required": ["id", "descriptor"], "properties": {"id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"}, "descriptor": {"type": "string", "minLength": 1}, "range": {"$ref": "#/$defs/range"}, "label": {"type": "string"}}},
+    "xpub": {"type": "object", "additionalProperties": false, "required": ["id", "xpub", "script_type", "branches", "range"], "properties": {"id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"}, "xpub": {"type": "string", "pattern": "^xpub"}, "script_type": {"enum": ["pkh", "sh(wpkh)", "wpkh", "tr"]}, "branches": {"type": "array", "items": {"enum": [0, 1]}, "minItems": 1, "maxItems": 2, "uniqueItems": true}, "range": {"$ref": "#/$defs/range"}, "label": {"type": "string"}}}
+  },
+  "anyOf": [
+    {"required": ["addresses"], "properties": {"addresses": {"minItems": 1}}},
+    {"required": ["utxos"], "properties": {"utxos": {"minItems": 1}}},
+    {"required": ["descriptors"], "properties": {"descriptors": {"minItems": 1}}},
+    {"required": ["xpubs"], "properties": {"xpubs": {"minItems": 1}}}
+  ]
+}

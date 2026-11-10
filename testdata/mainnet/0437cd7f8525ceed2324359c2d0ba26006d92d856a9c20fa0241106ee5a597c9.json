@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "txid": "0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9",
+  "hex": "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0134ffffffff0100f2052a0100000043410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac00000000",
+  "block_hash": "000000008d9dc510f23c2657fc4f67bea30078cc05a90eb89e84cc475c080805",
+  "block_height": 9,
+  "block_time": 1231473279,
+  "source_url": "https://mempool.space/tx/0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9",
+  "description": "Block 9 coinbase transaction. Its output 0 is spent by the block 170 first-transfer fixture, providing a coinbase root for provenance tests."
+}

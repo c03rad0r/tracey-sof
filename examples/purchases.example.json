@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "purchases": [
+    {
+      "id": "atm-example-001",
+      "date": "2020-01-01T00:00:00Z",
+      "provider": "Example ATM — replace this record",
+      "txids": [],
+      "addresses": [],
+      "outpoints": [],
+      "amount_sats": 100000,
+      "artifacts": [],
+      "notes": "A purchase transaction or outpoint is a provenance boundary. Associated addresses are narrower evidence."
+    }
+  ]
+}
