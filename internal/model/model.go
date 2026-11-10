@@ -8,7 +8,12 @@ import (
 )
 
 const SchemaVersion = 1
-const SoftwareVersion = "tracey-sof/0.1.0"
+const SoftwareVersion = "tracey-sof/0.2.0"
+
+const (
+	DefaultMaxHops         = 25
+	DefaultMaxTransactions = 10000
+)
 
 // Outpoint uniquely identifies a transaction output. Vout is never negative.
 type Outpoint struct {
@@ -31,17 +36,19 @@ func ParseOutpoint(s string) (Outpoint, error) {
 }
 
 type Target struct {
-	Outpoint    Outpoint `json:"-"`
-	TxID        string   `json:"txid"`
-	Vout        uint32   `json:"vout"`
-	Address     string   `json:"address,omitempty"`
-	ValueSats   int64    `json:"value_sats"`
-	OwnerIDs    []string `json:"owner_ids,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
-	Status      string   `json:"documentation_status"`
-	Trace       string   `json:"trace_status"`
-	PurchaseIDs []string `json:"purchase_ids,omitempty"`
-	Notes       []string `json:"notes,omitempty"`
+	Outpoint       Outpoint `json:"-"`
+	TxID           string   `json:"txid"`
+	Vout           uint32   `json:"vout"`
+	Address        string   `json:"address,omitempty"`
+	ValueSats      int64    `json:"value_sats"`
+	OwnerIDs       []string `json:"owner_ids,omitempty"`
+	Labels         []string `json:"labels,omitempty"`
+	Status         string   `json:"documentation_status"`
+	Trace          string   `json:"trace_status"`
+	PurchaseIDs    []string `json:"purchase_ids,omitempty"`
+	Notes          []string `json:"notes,omitempty"`
+	ReviewRequired bool     `json:"review_required,omitempty"`
+	ReviewReasons  []string `json:"review_reasons,omitempty"`
 }
 
 func (t Target) Key() string { return Outpoint{TxID: t.TxID, Vout: t.Vout}.String() }
@@ -86,12 +93,32 @@ type Transaction struct {
 }
 
 type Boundary struct {
-	NodeID      string   `json:"node_id"`
-	Reason      string   `json:"reason"`
-	Detail      string   `json:"detail,omitempty"`
-	PurchaseIDs []string `json:"purchase_ids,omitempty"`
-	Outpoint    string   `json:"outpoint,omitempty"`
-	Transaction string   `json:"transaction,omitempty"`
+	NodeID               string   `json:"node_id"`
+	Reason               string   `json:"reason"`
+	Detail               string   `json:"detail,omitempty"`
+	PurchaseIDs          []string `json:"purchase_ids,omitempty"`
+	Outpoint             string   `json:"outpoint,omitempty"`
+	Transaction          string   `json:"transaction,omitempty"`
+	ReviewRequired       bool     `json:"review_required,omitempty"`
+	PolicyRule           string   `json:"policy_rule,omitempty"`
+	PolicyObservedSats   int64    `json:"policy_observed_sats,omitempty"`
+	PolicyThresholdSats  int64    `json:"policy_threshold_sats,omitempty"`
+	PolicyObservedCount  int      `json:"policy_observed_count,omitempty"`
+	PolicyThresholdCount int      `json:"policy_threshold_count,omitempty"`
+	MatchedEvidenceKind  string   `json:"matched_evidence_kind,omitempty"`
+	MatchedEvidenceValue string   `json:"matched_evidence_value,omitempty"`
+}
+
+// TracePolicy is the effective, reproducible traversal policy recorded in a trace.
+// Zero-valued stop thresholds are disabled.
+type TracePolicy struct {
+	SchemaVersion             int   `json:"schema_version"`
+	MaxHops                   int   `json:"max_hops"`
+	MaxTransactions           int   `json:"max_transactions"`
+	StopIfPrevoutValueSatsGTE int64 `json:"stop_if_prevout_value_sats_gte,omitempty"`
+	StopIfInputCountGTE       int   `json:"stop_if_input_count_gte,omitempty"`
+	StopIfOutputCountGTE      int   `json:"stop_if_output_count_gte,omitempty"`
+	StopBeforeBlockHeight     int64 `json:"stop_before_block_height,omitempty"`
 }
 
 type TraceEdge struct {
@@ -105,11 +132,20 @@ type Trace struct {
 	Network       string                 `json:"network"`
 	BestBlock     string                 `json:"best_block"`
 	BestHeight    int64                  `json:"best_height"`
+	Policy        TracePolicy            `json:"policy"`
 	Targets       []TargetRef            `json:"targets"`
 	Transactions  map[string]Transaction `json:"transactions"`
 	Edges         []TraceEdge            `json:"edges"`
 	Boundaries    []Boundary             `json:"boundaries"`
 	Incomplete    bool                   `json:"incomplete"`
+}
+
+type EvidenceStatus struct {
+	Kind          string   `json:"kind"`
+	Value         string   `json:"value"`
+	PurchaseIDs   []string `json:"purchase_ids"`
+	Matched       bool     `json:"matched"`
+	MatchedNodeID string   `json:"matched_node_id,omitempty"`
 }
 
 type Artifact struct {
@@ -210,6 +246,7 @@ type GraphNode struct {
 	PurchaseIDs    []string `json:"purchase_ids,omitempty"`
 	TerminalReason string   `json:"terminal_reason,omitempty"`
 	TerminalDetail string   `json:"terminal_detail,omitempty"`
+	ReviewRequired bool     `json:"review_required,omitempty"`
 }
 
 type GraphEdge struct {
@@ -232,6 +269,8 @@ type Summary struct {
 	PartialUTXOs      int   `json:"partial_utxos"`
 	UndocumentedUTXOs int   `json:"undocumented_utxos"`
 	IncompleteUTXOs   int   `json:"incomplete_utxos"`
+	ReviewUTXOs       int   `json:"review_utxos"`
+	UnmatchedEvidence int   `json:"unmatched_evidence"`
 }
 
 type Chain struct {
@@ -240,17 +279,19 @@ type Chain struct {
 }
 
 type Report struct {
-	SchemaVersion   int            `json:"schema_version"`
-	SoftwareVersion string         `json:"software_version,omitempty"`
-	Network         string         `json:"network"`
-	GeneratedAt     string         `json:"generated_at"`
-	Chain           Chain          `json:"chain"`
-	Warnings        []string       `json:"warnings"`
-	Purchases       []Purchase     `json:"purchases"`
-	UTXOs           []Target       `json:"utxos"`
-	Graph           Graph          `json:"graph"`
-	Summary         Summary        `json:"summary"`
-	Annotations     AnnotationFile `json:"annotations"`
+	SchemaVersion   int              `json:"schema_version"`
+	SoftwareVersion string           `json:"software_version,omitempty"`
+	Network         string           `json:"network"`
+	GeneratedAt     string           `json:"generated_at"`
+	Chain           Chain            `json:"chain"`
+	Policy          TracePolicy      `json:"trace_policy"`
+	Warnings        []string         `json:"warnings"`
+	Purchases       []Purchase       `json:"purchases"`
+	Evidence        []EvidenceStatus `json:"evidence"`
+	UTXOs           []Target         `json:"utxos"`
+	Graph           Graph            `json:"graph"`
+	Summary         Summary          `json:"summary"`
+	Annotations     AnnotationFile   `json:"annotations"`
 }
 
 func (t Target) MarshalJSON() ([]byte, error) {

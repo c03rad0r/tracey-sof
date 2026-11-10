@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tracey-sof:trace-policy:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "max_hops": {"type": "integer", "minimum": 0, "maximum": 10000},
+    "max_transactions": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "stop_if_prevout_value_sats_gte": {"type": "integer", "minimum": 0, "maximum": 2100000000000000},
+    "stop_if_input_count_gte": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "stop_if_output_count_gte": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "stop_before_block_height": {"type": "integer", "minimum": 0}
+  }
+}

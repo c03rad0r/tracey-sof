@@ -38,7 +38,7 @@ func TestCLINodeDiscoverTraceReportAndExport(t *testing.T) {
 		return stdout.String()
 	}
 
-	if output := invoke(cliCommandArguments("validate", p)); !strings.Contains(output, "owned, purchase, annotation, and artifact inputs are valid") {
+	if output := invoke(cliCommandArguments("validate", p)); !strings.Contains(output, "owned, purchase, annotation, artifact, and trace-policy inputs are valid") {
 		t.Fatalf("validate output = %q", output)
 	}
 

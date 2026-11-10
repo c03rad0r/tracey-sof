@@ -1,12 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"tracey-sof/internal/core"
@@ -39,10 +40,14 @@ func loadInputs(dir string, artifacts bool) (model.PurchaseFile, model.Owned, mo
 
 func (a application) validate(p paths) error {
 	_, _, _, err := loadInputs(p.dataDir, true)
-	if err == nil {
-		fmt.Fprintln(a.stdout, "owned, purchase, annotation, and artifact inputs are valid")
+	if err != nil {
+		return err
 	}
-	return err
+	if _, err := input.LoadTracePolicy(filepath.Join(p.dataDir, "trace-policy.json")); err != nil {
+		return err
+	}
+	fmt.Fprintln(a.stdout, "owned, purchase, annotation, artifact, and trace-policy inputs are valid")
+	return nil
 }
 
 func rpcClient() (*core.Client, error) {
@@ -104,9 +109,24 @@ func (a application) discover(ctx context.Context, p paths) error {
 	return nil
 }
 
-func traceLimits() (provenance.Limits, error) {
-	limits := provenance.Limits{MaxDepth: 25, MaxTransactions: 10000}
+func traceLimits(dataDir string) (provenance.Limits, error) {
+	policyPath := filepath.Join(dataDir, "trace-policy.json")
+	policy, err := input.LoadTracePolicy(policyPath)
+	if err != nil {
+		return provenance.Limits{}, err
+	}
+	limits := provenance.Limits{
+		MaxDepth: policy.MaxHops, MaxTransactions: policy.MaxTransactions,
+		StopIfPrevoutValueSatsGTE: policy.StopIfPrevoutValueSatsGTE,
+		StopIfInputCountGTE:       policy.StopIfInputCountGTE, StopIfOutputCountGTE: policy.StopIfOutputCountGTE,
+		StopBeforeBlockHeight: policy.StopBeforeBlockHeight,
+	}
+	_, statErr := os.Stat(policyPath)
+	policyPresent := statErr == nil
 	for name, destination := range map[string]*int{"TRACE_MAX_DEPTH": &limits.MaxDepth, "TRACE_MAX_TRANSACTIONS": &limits.MaxTransactions} {
+		if policyPresent {
+			continue
+		}
 		if value := env(name); value != "" {
 			parsed, err := strconv.Atoi(value)
 			if err != nil || parsed <= 0 {
@@ -146,7 +166,7 @@ func (a application) trace(ctx context.Context, p paths) error {
 	if err != nil {
 		return err
 	}
-	limits, err := traceLimits()
+	limits, err := traceLimits(p.dataDir)
 	if err != nil {
 		return err
 	}
@@ -184,6 +204,14 @@ func (a application) buildReport(p paths) (model.Report, error) {
 	if err != nil {
 		return model.Report{}, err
 	}
+	limits, err := traceLimits(p.dataDir)
+	if err != nil {
+		return model.Report{}, err
+	}
+	expectedPolicy := provenance.EffectivePolicy(limits)
+	if trace.Policy != expectedPolicy {
+		return model.Report{}, fmt.Errorf("trace policy changed since trace; rerun audit to recompute policy boundaries")
+	}
 	report, err := provenance.Evaluate(trace, purchases.Purchases, annotations, time.Now())
 	if err == nil {
 		report.SoftwareVersion = model.SoftwareVersion
@@ -216,6 +244,10 @@ func (a application) report(ctx context.Context, p paths, server, includePDF boo
 	return nil
 }
 
+func (a application) reportRebuilder(p paths) func() (model.Report, error) {
+	return func() (model.Report, error) { return a.buildReport(p) }
+}
+
 func (a application) ui(_ context.Context, p paths) error {
 	report, err := a.buildReport(p)
 	if err != nil {
@@ -223,7 +255,7 @@ func (a application) ui(_ context.Context, p paths) error {
 	}
 	address := env("SOF_LISTEN")
 	server, err := uiserver.New(uiserver.Config{Address: address, AnnotationPath: filepath.Join(p.dataDir, "annotations.json"), Report: report,
-		Rebuild: func() (model.Report, error) { return a.buildReport(p) }})
+		Rebuild: a.reportRebuilder(p)})
 	if err != nil {
 		return err
 	}
@@ -244,11 +276,15 @@ func (a application) export(p paths, purchases model.PurchaseFile) error {
 }
 
 func (a application) example(ctx context.Context, p paths) error {
+	return a.exampleWith(ctx, p, defaultExampleDependencies())
+}
+
+func (a application) exampleWith(ctx context.Context, p paths, deps exampleDependencies) error {
 	loaded, err := fixtures.LoadDir(p.fixtures)
 	if err != nil {
 		return err
 	}
-	source, err := fixtures.NewSource(loaded)
+	source, err := deps.newSource(loaded)
 	if err != nil {
 		return err
 	}
@@ -265,7 +301,7 @@ func (a application) example(ctx context.Context, p paths) error {
 	purchases := model.PurchaseFile{SchemaVersion: 1, Purchases: []model.Purchase{{ID: "example-first-transfer", Date: time.Unix(selected.BlockTime, 0).UTC().Format(time.RFC3339), Provider: "Historical mainnet demonstration", TxIDs: []string{firstTransfer}, AmountSats: &amount, Notes: "A user-supplied purchase-style boundary used only to demonstrate report mechanics, not a claim of ownership or an actual ATM invoice."}}}
 	owned := []model.TargetRef{{TxID: firstTransfer, Vout: 0, ValueSats: 1000000000, OwnerIDs: []string{"example"}, Labels: []string{"historical demonstration"}}}
 	chain := model.Chain{BestBlock: selected.BlockHash, BestHeight: selected.BlockHeight}
-	evidence, err := provenance.NewEvidence(purchases, input.EmptyAnnotations())
+	evidence, err := deps.newEvidence(purchases, input.EmptyAnnotations())
 	if err != nil {
 		return err
 	}
@@ -274,7 +310,7 @@ func (a application) example(ctx context.Context, p paths) error {
 		return err
 	}
 	trace.Network = "mainnet"
-	report, err := provenance.Evaluate(trace, purchases.Purchases, input.EmptyAnnotations(), time.Unix(selected.BlockTime, 0))
+	report, err := deps.evaluate(trace, purchases.Purchases, input.EmptyAnnotations(), time.Unix(selected.BlockTime, 0))
 	if err != nil {
 		return err
 	}
@@ -287,6 +323,10 @@ func (a application) example(ctx context.Context, p paths) error {
 }
 
 func (a application) testNode(ctx context.Context, p paths) error {
+	return a.testNodeWith(ctx, p, defaultTestNodeDependencies())
+}
+
+func (a application) testNodeWith(ctx context.Context, p paths, deps testNodeDependencies) error {
 	loaded, err := fixtures.LoadDir(p.fixtures)
 	if err != nil {
 		return err
@@ -299,7 +339,7 @@ func (a application) testNode(ctx context.Context, p paths) error {
 	if err != nil {
 		return err
 	}
-	source := core.NewSource(client, "")
+	source := deps.newSource(client)
 	for _, fixture := range loaded {
 		if err := source.Prefetch(ctx, fixture.TxID, fixture.BlockHash, fixture.BlockHeight); err != nil {
 			return fmt.Errorf("verify %s: %w", fixture.TxID, err)
@@ -308,21 +348,17 @@ func (a application) testNode(ctx context.Context, p paths) error {
 		if err != nil {
 			return err
 		}
-		expected, err := core.DecodeTransaction(fixture.Hex)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal([]byte(tx.Hex), []byte(expected.Hex)) {
+		if !strings.EqualFold(strings.TrimSpace(tx.Hex), strings.TrimSpace(fixture.Hex)) {
 			return fmt.Errorf("transaction %s differs from committed fixture", fixture.TxID)
 		}
 		fmt.Fprintf(a.stdout, "verified %s at block %d\n", fixture.TxID, fixture.BlockHeight)
 	}
-	emptyEvidence, err := provenance.NewEvidence(model.PurchaseFile{SchemaVersion: 1, Purchases: []model.Purchase{{ID: "intentionally-no-match"}}}, input.EmptyAnnotations())
+	emptyEvidence, err := deps.newEvidence(model.PurchaseFile{SchemaVersion: 1, Purchases: []model.Purchase{{ID: "intentionally-no-match"}}}, input.EmptyAnnotations())
 	if err != nil {
 		return err
 	}
 	targets := []model.TargetRef{{TxID: firstTransfer, Vout: 0, ValueSats: 1000000000}}
-	trace, err := provenance.Trace(ctx, source, targets, emptyEvidence, tip, provenance.Limits{MaxDepth: 3, MaxTransactions: 10})
+	trace, err := deps.trace(ctx, source, targets, emptyEvidence, tip, provenance.Limits{MaxDepth: 3, MaxTransactions: 10})
 	if err != nil {
 		return err
 	}
@@ -333,5 +369,17 @@ func (a application) testNode(ctx context.Context, p paths) error {
 		return fmt.Errorf("real first-transfer parent was not traced")
 	}
 	fmt.Fprintln(a.stdout, "verified first-transfer backward ancestry through its block-9 coinbase parent")
+	policyTrace, err := deps.trace(ctx, source, targets, emptyEvidence, tip, provenance.Limits{StopBeforeBlockHeight: 171})
+	if err != nil {
+		return err
+	}
+	policyReport, err := deps.evaluate(policyTrace, nil, input.EmptyAnnotations(), time.Unix(0, 0))
+	if err != nil {
+		return err
+	}
+	if !policyTrace.Incomplete || len(policyReport.UTXOs) != 1 || !policyReport.UTXOs[0].ReviewRequired || policyReport.UTXOs[0].Trace != "incomplete" {
+		return fmt.Errorf("real first-transfer policy cutoff did not produce a review-required incomplete trace")
+	}
+	fmt.Fprintln(a.stdout, "verified real policy cutoff produces a review-required boundary")
 	return nil
 }

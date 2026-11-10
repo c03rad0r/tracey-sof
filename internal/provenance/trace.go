@@ -19,6 +19,10 @@ const (
 	reasonInvalidParent          = "invalid_parent"
 	reasonMaxDepth               = "max_depth"
 	reasonMaxTransactions        = "max_transactions"
+	reasonPolicyPrevoutValue     = "policy_prevout_value"
+	reasonPolicyInputCount       = "policy_input_count"
+	reasonPolicyOutputCount      = "policy_output_count"
+	reasonPolicyBlockHeight      = "policy_stop_before_block_height"
 )
 
 // TransactionSource retrieves a transaction by its exact txid.
@@ -28,8 +32,31 @@ type TransactionSource interface {
 
 // Limits bound a single shared traversal across all targets.
 type Limits struct {
-	MaxDepth        int
-	MaxTransactions int
+	MaxDepth                  int
+	MaxTransactions           int
+	StopIfPrevoutValueSatsGTE int64
+	StopIfInputCountGTE       int
+	StopIfOutputCountGTE      int
+	StopBeforeBlockHeight     int64
+}
+
+// EffectivePolicy returns the fully resolved values stored in a trace/report.
+func EffectivePolicy(limits Limits) model.TracePolicy {
+	if limits.MaxDepth == 0 {
+		limits.MaxDepth = defaultMaxDepth
+	}
+	if limits.MaxTransactions == 0 {
+		limits.MaxTransactions = defaultMaxTransactions
+	}
+	return model.TracePolicy{
+		SchemaVersion:             model.SchemaVersion,
+		MaxHops:                   limits.MaxDepth,
+		MaxTransactions:           limits.MaxTransactions,
+		StopIfPrevoutValueSatsGTE: limits.StopIfPrevoutValueSatsGTE,
+		StopIfInputCountGTE:       limits.StopIfInputCountGTE,
+		StopIfOutputCountGTE:      limits.StopIfOutputCountGTE,
+		StopBeforeBlockHeight:     limits.StopBeforeBlockHeight,
+	}
 }
 
 func transactionNodeID(txid string) string { return "tx:" + txid }
@@ -87,11 +114,22 @@ func (t *tracer) addBoundary(boundary model.Boundary) {
 		return
 	}
 	boundary.PurchaseIDs = append([]string(nil), boundary.PurchaseIDs...)
-	t.boundaries[key] = boundary
-	t.trace.Boundaries = append(t.trace.Boundaries, boundary)
 	if boundary.Reason != reasonPurchase && boundary.Reason != reasonCoinbase {
+		boundary.ReviewRequired = true
 		t.trace.Incomplete = true
 	}
+	switch boundary.Reason {
+	case reasonMaxDepth:
+		boundary.PolicyRule = "max_hops"
+		boundary.PolicyThresholdCount = t.limits.MaxDepth
+	case reasonMaxTransactions:
+		boundary.PolicyRule = "max_transactions"
+		boundary.PolicyThresholdCount = t.limits.MaxTransactions
+		boundary.PolicyObservedCount = t.attempts
+	}
+
+	t.boundaries[key] = boundary
+	t.trace.Boundaries = append(t.trace.Boundaries, boundary)
 }
 
 func (t *tracer) outpointBoundary(outpoint model.Outpoint, reason, detail string, purchaseIDs []string) {
@@ -111,6 +149,54 @@ func (t *tracer) transactionBoundary(txid, reason, detail string, purchaseIDs []
 		Detail:      detail,
 		PurchaseIDs: purchaseIDs,
 		Transaction: txid,
+	})
+}
+
+func (t *tracer) matchedOutpointBoundary(outpoint model.Outpoint, detail string, purchaseIDs []string, kind, value string) {
+	t.addBoundary(model.Boundary{
+		NodeID:               outpointNodeID(outpoint),
+		Reason:               reasonPurchase,
+		Detail:               detail,
+		PurchaseIDs:          purchaseIDs,
+		Outpoint:             outpoint.String(),
+		MatchedEvidenceKind:  kind,
+		MatchedEvidenceValue: value,
+	})
+}
+
+func (t *tracer) matchedTransactionBoundary(txid, detail string, purchaseIDs []string) {
+	t.addBoundary(model.Boundary{
+		NodeID:               transactionNodeID(txid),
+		Reason:               reasonPurchase,
+		Detail:               detail,
+		PurchaseIDs:          purchaseIDs,
+		Transaction:          txid,
+		MatchedEvidenceKind:  "transaction",
+		MatchedEvidenceValue: txid,
+	})
+}
+
+func (t *tracer) policyOutpointBoundary(outpoint model.Outpoint, reason, rule, detail string, observedSats, thresholdSats int64) {
+	t.addBoundary(model.Boundary{
+		NodeID:              outpointNodeID(outpoint),
+		Reason:              reason,
+		Detail:              detail,
+		Outpoint:            outpoint.String(),
+		PolicyRule:          rule,
+		PolicyObservedSats:  observedSats,
+		PolicyThresholdSats: thresholdSats,
+	})
+}
+
+func (t *tracer) policyTransactionBoundary(txid, reason, rule, detail string, observedCount, thresholdCount int) {
+	t.addBoundary(model.Boundary{
+		NodeID:               transactionNodeID(txid),
+		Reason:               reason,
+		Detail:               detail,
+		Transaction:          txid,
+		PolicyRule:           rule,
+		PolicyObservedCount:  observedCount,
+		PolicyThresholdCount: thresholdCount,
 	})
 }
 
@@ -202,6 +288,18 @@ func Trace(ctx context.Context, source TransactionSource, targets []model.Target
 	if limits.MaxTransactions < 0 {
 		return model.Trace{}, fmt.Errorf("max transactions cannot be negative")
 	}
+	if limits.StopIfPrevoutValueSatsGTE < 0 {
+		return model.Trace{}, fmt.Errorf("prevout value stop threshold cannot be negative")
+	}
+	if limits.StopIfInputCountGTE < 0 {
+		return model.Trace{}, fmt.Errorf("input count stop threshold cannot be negative")
+	}
+	if limits.StopIfOutputCountGTE < 0 {
+		return model.Trace{}, fmt.Errorf("output count stop threshold cannot be negative")
+	}
+	if limits.StopBeforeBlockHeight < 0 {
+		return model.Trace{}, fmt.Errorf("block height cutoff cannot be negative")
+	}
 	if limits.MaxDepth == 0 {
 		limits.MaxDepth = defaultMaxDepth
 	}
@@ -222,6 +320,7 @@ func Trace(ctx context.Context, source TransactionSource, targets []model.Target
 		SchemaVersion: model.SchemaVersion,
 		BestBlock:     chain.BestBlock,
 		BestHeight:    chain.BestHeight,
+		Policy:        EffectivePolicy(limits),
 		Targets:       make([]model.TargetRef, 0, len(targets)),
 		Transactions:  make(map[string]model.Transaction),
 		Edges:         make([]model.TraceEdge, 0),
@@ -241,7 +340,7 @@ func Trace(ctx context.Context, source TransactionSource, targets []model.Target
 		t.trace.Targets = append(t.trace.Targets, cloneTarget(target))
 		outpoint := model.Outpoint{TxID: target.TxID, Vout: target.Vout}
 		if purchaseIDs := evidence.OutpointIDs(outpoint); len(purchaseIDs) > 0 {
-			t.outpointBoundary(outpoint, reasonPurchase, "confirmed purchase outpoint", purchaseIDs)
+			t.matchedOutpointBoundary(outpoint, "confirmed purchase outpoint", purchaseIDs, "outpoint", outpoint.String())
 			continue
 		}
 		t.queue = append(t.queue, traceVisit{outpoint: outpoint, initial: true})
@@ -269,12 +368,47 @@ func Trace(ctx context.Context, source TransactionSource, targets []model.Target
 		}
 		if !visit.initial {
 			if purchaseIDs := evidence.AddressIDs(output.Address); len(purchaseIDs) > 0 {
-				t.outpointBoundary(visit.outpoint, reasonPurchase, "confirmed purchase address on exact previous output", purchaseIDs)
+				t.matchedOutpointBoundary(visit.outpoint, "confirmed purchase address on exact previous output", purchaseIDs, "address", output.Address)
 				continue
 			}
 		}
 		if purchaseIDs := evidence.TransactionIDs(visit.outpoint.TxID); len(purchaseIDs) > 0 {
-			t.transactionBoundary(visit.outpoint.TxID, reasonPurchase, "confirmed purchase transaction", purchaseIDs)
+			t.matchedTransactionBoundary(visit.outpoint.TxID, "confirmed purchase transaction", purchaseIDs)
+			continue
+		}
+		hasCoinbase := false
+		for _, input := range transaction.Inputs {
+			if input.Coinbase {
+				hasCoinbase = true
+				break
+			}
+		}
+		if hasCoinbase {
+			t.transactionBoundary(visit.outpoint.TxID, reasonCoinbase, "coinbase transaction is a known non-purchase origin", nil)
+			continue
+		}
+		if !visit.initial && t.limits.StopIfPrevoutValueSatsGTE > 0 && output.ValueSats >= t.limits.StopIfPrevoutValueSatsGTE {
+			t.policyOutpointBoundary(visit.outpoint, reasonPolicyPrevoutValue, "prevout_value",
+				fmt.Sprintf("ancestor output value %d sats is at least the configured %d sats threshold", output.ValueSats, t.limits.StopIfPrevoutValueSatsGTE),
+				output.ValueSats, t.limits.StopIfPrevoutValueSatsGTE)
+			continue
+		}
+		if t.limits.StopIfInputCountGTE > 0 && len(transaction.Inputs) >= t.limits.StopIfInputCountGTE {
+			t.policyTransactionBoundary(visit.outpoint.TxID, reasonPolicyInputCount, "input_count",
+				fmt.Sprintf("transaction input count %d is at least the configured %d threshold", len(transaction.Inputs), t.limits.StopIfInputCountGTE),
+				len(transaction.Inputs), t.limits.StopIfInputCountGTE)
+			continue
+		}
+		if t.limits.StopIfOutputCountGTE > 0 && len(transaction.Outputs) >= t.limits.StopIfOutputCountGTE {
+			t.policyTransactionBoundary(visit.outpoint.TxID, reasonPolicyOutputCount, "output_count",
+				fmt.Sprintf("transaction output count %d is at least the configured %d threshold", len(transaction.Outputs), t.limits.StopIfOutputCountGTE),
+				len(transaction.Outputs), t.limits.StopIfOutputCountGTE)
+			continue
+		}
+		if t.limits.StopBeforeBlockHeight > 0 && transaction.BlockHeight > 0 && transaction.BlockHeight < t.limits.StopBeforeBlockHeight {
+			t.policyTransactionBoundary(visit.outpoint.TxID, reasonPolicyBlockHeight, "stop_before_block_height",
+				fmt.Sprintf("transaction block height %d is before the configured cutoff %d", transaction.BlockHeight, t.limits.StopBeforeBlockHeight),
+				0, 0)
 			continue
 		}
 		if t.expanded[visit.outpoint.TxID] {
@@ -283,17 +417,13 @@ func Trace(ctx context.Context, source TransactionSource, targets []model.Target
 		t.expanded[visit.outpoint.TxID] = true
 
 		for inputIndex, input := range transaction.Inputs {
-			if input.Coinbase {
-				t.transactionBoundary(visit.outpoint.TxID, reasonCoinbase, "coinbase transaction is a known non-purchase origin", nil)
-				continue
-			}
 			t.addEdge(model.TraceEdge{
 				SpendingTxID: visit.outpoint.TxID,
 				InputIndex:   inputIndex,
 				PrevOut:      input.PrevOut,
 			})
 			if purchaseIDs := evidence.OutpointIDs(input.PrevOut); len(purchaseIDs) > 0 {
-				t.outpointBoundary(input.PrevOut, reasonPurchase, "confirmed purchase outpoint", purchaseIDs)
+				t.matchedOutpointBoundary(input.PrevOut, "confirmed purchase outpoint", purchaseIDs, "outpoint", input.PrevOut.String())
 				continue
 			}
 			if visit.depth >= t.limits.MaxDepth {

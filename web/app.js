@@ -214,11 +214,20 @@
 
   function renderMetadata() {
     const chain = isRecord(report.chain) ? report.chain : {};
+    const policy = isRecord(report.trace_policy) ? report.trace_policy : {};
+    const policyValue = function (value) {
+      return Number.isSafeInteger(value) && value > 0 ? String(value) : "Disabled";
+    };
     const entries = [
       ["Network", text(report.network, "—")],
       ["Generated at", secret(report.generated_at, "[redacted timestamp]")],
       ["Best block", secret(chain.best_block)],
-      ["Best height", formatCount(chain.best_height)]
+      ["Best height", formatCount(chain.best_height)],
+      ["Maximum hops", policyValue(policy.max_hops)],
+      ["Transaction budget", policyValue(policy.max_transactions)],
+      ["Stop ancestor value at", policyValue(policy.stop_if_prevout_value_sats_gte) + (policy.stop_if_prevout_value_sats_gte > 0 ? " sats" : "")],
+      ["Fan-in / fan-out stop", policyValue(policy.stop_if_input_count_gte) + " / " + policyValue(policy.stop_if_output_count_gte)],
+      ["Oldest traced block", policyValue(policy.stop_before_block_height)]
     ];
     const metadata = byId("report-metadata");
     metadata.replaceChildren();
@@ -237,6 +246,7 @@
       ["Partially documented", formatCount(summary.partial_utxos), "Independent documentation status"],
       ["Undocumented", formatCount(summary.undocumented_utxos), "Not a statement of trace completeness"],
       ["Incomplete traces", formatCount(summary.incomplete_utxos), "Review warnings before conclusions"],
+      ["Review required", formatCount(summary.review_utxos), "Policy or data boundaries needing review"],
       ["Visible after filters", formatCount(api.filterUtxos(allUtxos, state).length), "Current selection"]
     ];
     const container = byId("summary-cards");
@@ -356,6 +366,10 @@
       row.cells[3].appendChild(statusPill(utxo.documentation_status,
         ["documented", "partially_documented", "undocumented"]));
       row.cells[4].appendChild(statusPill(utxo.trace_status, ["complete", "incomplete"]));
+      if (utxo.review_required === true) {
+        row.cells[4].appendChild(make("span", "review-flag", " · review required"));
+        row.cells[4].title = asArray(utxo.review_reasons).join(", ");
+      }
       body.appendChild(row);
     }
   }
@@ -690,6 +704,45 @@
     }
   }
 
+  function renderEvidenceDiagnostics() {
+    const container = byId("purchase-list");
+    const diagnostics = make("section", "evidence-diagnostics");
+    diagnostics.appendChild(make("h3", "", "Purchase-evidence match diagnostics"));
+    const evidence = asArray(report.evidence);
+    if (evidence.length === 0) {
+      diagnostics.appendChild(make("p", "empty-state", "No purchase evidence identifiers were supplied."));
+      container.appendChild(diagnostics);
+      return;
+    }
+    const unmatched = evidence.filter(function (item) { return isRecord(item) && item.matched !== true; }).length;
+    diagnostics.appendChild(make("p", "muted", unmatched + " of " + evidence.length + " supplied evidence identifiers were not observed in the traced graph."));
+    const table = make("table", "evidence-diagnostics-table");
+    const head = make("thead");
+    const headings = make("tr");
+    ["Type", "Value", "Purchase ID", "Observed", "Boundary"].forEach(function (label) { headings.appendChild(make("th", "", label)); });
+    head.appendChild(headings);
+    const body = make("tbody");
+    for (const item of evidence) {
+      if (!isRecord(item)) {
+        continue;
+      }
+      const row = make("tr", item.matched === true ? "evidence-matched" : "evidence-unmatched");
+      append(row,
+        make("td", "", text(item.kind, "—")),
+        make("td", "", shortIdentifier(secret(item.value, "[redacted evidence]"))),
+        make("td", "", asArray(item.purchase_ids).map(function (id) { return secret(id, "[redacted purchase]"); }).join(", ") || "—"),
+        make("td", "", item.matched === true ? "Matched" : "Not observed"),
+        make("td", "", text(item.matched_node_id, "—")));
+      body.appendChild(row);
+    }
+    table.appendChild(head);
+    table.appendChild(body);
+    const wrapper = make("div", "table-wrap");
+    wrapper.appendChild(table);
+    diagnostics.appendChild(wrapper);
+    container.appendChild(diagnostics);
+  }
+
   function renderResults() {
     const visible = api.filterUtxos(allUtxos, state);
     const roots = api.uniqueStrings(visible.map(function (utxo) { return "out:" + utxo.outpoint; }));
@@ -701,6 +754,7 @@
     renderGraph(state.layout);
     renderTimeline(state.layout);
     renderPurchases();
+    renderEvidenceDiagnostics();
   }
 
   function renderPrivacy() {

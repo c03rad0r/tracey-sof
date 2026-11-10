@@ -4,7 +4,7 @@ Local, Core-only source-of-funds analysis for current Bitcoin UTXOs. It discover
 
 ## Status
 
-Implementation is in progress. See [`PLAN.md`](PLAN.md) for decisions and the living verification checklist. Also see [`docs/verification.md`](docs/verification.md) for repeatable checks and the successful `dq05` live-node integration record. Do not infer provenance completeness from an interrupted or partial trace.
+Implementation and release verification are complete for the current source tree. See [`PLAN.md`](PLAN.md) for decisions and the living verification checklist. Also see [`docs/verification.md`](docs/verification.md) for repeatable checks and the successful `dq05` live-node integration record. The latest local release check passed with 100% first-party Go statement coverage and 100% JavaScript statement/branch/function/line coverage. Do not infer provenance completeness from an interrupted or partial trace.
 
 ## Quick start
 
@@ -17,6 +17,7 @@ install -d -m 700 data
 install -m 600 examples/owned.example.json data/owned.json
 install -m 600 examples/purchases.example.json data/purchases.json
 install -m 600 examples/annotations.example.json data/annotations.json
+install -m 600 examples/trace-policy.example.json data/trace-policy.json
 # Edit node.env and replace every example identifier with your own public data.
 make node-check
 make audit
@@ -27,7 +28,7 @@ The service listens on `127.0.0.1` by default. Never expose the annotation serve
 
 Outputs are written below `out/`. `make example` runs without a node or private data. `make help` lists all supported commands.
 
-`make report` and `make export` reuse the cached ancestry for label/note edits. After editing purchase records or `purchase_links`, always rerun `make audit` so evidence boundaries and previously unexplored ancestors are recomputed.
+`make report` and `make export` reuse the cached ancestry for label/note edits. After editing purchase records, `purchase_links`, or `data/trace-policy.json`, always rerun `make audit` so evidence and policy boundaries are recomputed.
 
 ## Evidence limits
 

@@ -55,36 +55,78 @@ func manifest(files map[string][]byte) []byte {
 	return []byte(out.String())
 }
 
-func zipBytes(files map[string][]byte) ([]byte, error) {
+type zipArchiveWriter interface {
+	CreateHeader(*zip.FileHeader) (io.Writer, error)
+	Close() error
+}
+
+func newZIPArchiveWriter(out io.Writer) zipArchiveWriter { return zip.NewWriter(out) }
+
+func writeZIPWith(out io.Writer, files map[string][]byte, open func(io.Writer) zipArchiveWriter) error {
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	var out bytes.Buffer
-	writer := zip.NewWriter(&out)
+	writer := open(out)
 	for _, name := range names {
 		header := &zip.FileHeader{Name: name, Method: zip.Deflate}
 		header.SetModTime(time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC))
 		header.SetMode(0o600)
 		entry, err := writer.CreateHeader(header)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if _, err := entry.Write(files[name]); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if err := writer.Close(); err != nil {
+	return writer.Close()
+}
+
+func writeZIP(out io.Writer, files map[string][]byte) error {
+	return writeZIPWith(out, files, newZIPArchiveWriter)
+}
+
+func zipBytes(files map[string][]byte) ([]byte, error) {
+	var out bytes.Buffer
+	if err := writeZIP(&out, files); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
 }
 
+type evidenceFile interface {
+	io.Reader
+	io.Closer
+}
+
+func readVerifiedEvidence(file evidenceFile, artifactPath, expectedSHA256 string) ([]byte, error) {
+	sum := sha256.New()
+	data, err := io.ReadAll(io.TeeReader(file, sum))
+	closeErr := file.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if actual := hex.EncodeToString(sum.Sum(nil)); actual != expectedSHA256 {
+		return nil, fmt.Errorf("evidence %s changed after validation", artifactPath)
+	}
+	return data, nil
+}
+
 // Bundle exports existing generated reports and verified evidence artifacts.
 func Bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir string) error {
+	return bundle(report, purchases, dataDir, outDir, zipBytes)
+}
+
+type zipArchiveFunc func(map[string][]byte) ([]byte, error)
+
+func bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir string, archive zipArchiveFunc) error {
 	files := map[string][]byte{"README-accountant.txt": []byte(accountantReadme)}
-	for _, name := range []string{"report.json", "report.csv", "report.html", "report.svg", "report.pdf"} {
+	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"} {
 		data, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
 			return fmt.Errorf("bundle requires %s; run audit and PDF generation first: %w", name, err)
@@ -102,17 +144,9 @@ func Bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir s
 			if err != nil {
 				return fmt.Errorf("open evidence %s: %w", artifact.Path, err)
 			}
-			sum := sha256.New()
-			data, err := io.ReadAll(io.TeeReader(f, sum))
-			closeErr := f.Close()
+			data, err := readVerifiedEvidence(f, artifact.Path, artifact.SHA256)
 			if err != nil {
 				return err
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			if actual := hex.EncodeToString(sum.Sum(nil)); actual != artifact.SHA256 {
-				return fmt.Errorf("evidence %s changed after validation", artifact.Path)
 			}
 			name := path.Join("evidence", fmt.Sprintf("%03d-%03d-%s", i+1, j+1, filepath.Base(artifact.Path)))
 			files[name] = data
@@ -131,7 +165,7 @@ func Bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir s
 		return err
 	}
 	files["manifest.sha256"] = manifest(files)
-	data, err := zipBytes(files)
+	data, err := archive(files)
 	if err != nil {
 		return err
 	}

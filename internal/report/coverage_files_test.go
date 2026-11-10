@@ -107,8 +107,8 @@ func TestCoverageCSVBytesRoundTripAndEmptyReport(t *testing.T) {
 		t.Fatalf("CSV has %d records, want header and two rows", len(records))
 	}
 	for i, record := range records {
-		if len(record) != 11 {
-			t.Errorf("record %d has %d columns, want 11", i, len(record))
+		if len(record) != 13 {
+			t.Errorf("record %d has %d columns, want 13", i, len(record))
 		}
 	}
 	first := records[1]

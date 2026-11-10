@@ -157,6 +157,7 @@ func addBoundaryToGraph(g *evaluationGraph, boundary model.Boundary) error {
 	node.PurchaseIDs = append([]string(nil), boundary.PurchaseIDs...)
 	node.TerminalReason = boundary.Reason
 	node.TerminalDetail = boundary.Detail
+	node.ReviewRequired = boundary.ReviewRequired
 	return nil
 }
 
@@ -272,19 +273,26 @@ func buildEvaluationGraph(trace model.Trace, annotations model.AnnotationFile) (
 }
 
 type branchResult struct {
-	purchaseIDs map[string]struct{}
-	other       bool
-	incomplete  bool
-	cycle       bool
+	purchaseIDs   map[string]struct{}
+	reviewReasons map[string]struct{}
+	other         bool
+	incomplete    bool
+	cycle         bool
 }
 
 func newBranchResult() branchResult {
-	return branchResult{purchaseIDs: make(map[string]struct{})}
+	return branchResult{
+		purchaseIDs:   make(map[string]struct{}),
+		reviewReasons: make(map[string]struct{}),
+	}
 }
 
 func (r *branchResult) merge(other branchResult) {
 	for id := range other.purchaseIDs {
 		r.purchaseIDs[id] = struct{}{}
+	}
+	for reason := range other.reviewReasons {
+		r.reviewReasons[reason] = struct{}{}
 	}
 	r.other = r.other || other.other
 	r.incomplete = r.incomplete || other.incomplete
@@ -312,6 +320,11 @@ func (g *evaluationGraph) evaluateTarget(target model.TargetRef) (branchResult, 
 			default:
 				result.other = true
 				result.incomplete = true
+				if boundary.PolicyRule != "" {
+					result.reviewReasons[boundary.PolicyRule] = struct{}{}
+				} else {
+					result.reviewReasons[boundary.Reason] = struct{}{}
+				}
 			}
 			return result, nil
 		}
@@ -320,6 +333,7 @@ func (g *evaluationGraph) evaluateTarget(target model.TargetRef) (branchResult, 
 			result.other = true
 			result.incomplete = true
 			result.cycle = true
+			result.reviewReasons["cycle"] = struct{}{}
 			return result, nil
 		}
 		if states[nodeID] == done {
@@ -363,8 +377,13 @@ func boundaryWarning(boundary model.Boundary) string {
 	kind := "incomplete provenance boundary"
 	if boundary.Reason == reasonCoinbase {
 		kind = "non-purchase terminal"
+	} else if boundary.ReviewRequired {
+		kind = "review-required boundary"
 	}
 	warning := fmt.Sprintf("%s: %s: %s", boundary.NodeID, kind, boundary.Reason)
+	if boundary.PolicyRule != "" {
+		warning += ": rule " + boundary.PolicyRule
+	}
 	if boundary.Detail != "" {
 		warning += ": " + boundary.Detail
 	}
@@ -376,6 +395,72 @@ func addTargetSats(total, value int64) (int64, error) {
 		return 0, fmt.Errorf("satoshis total overflows int64")
 	}
 	return total + value, nil
+}
+
+func evidenceStatuses(purchases []model.Purchase, boundaries []model.Boundary) ([]model.EvidenceStatus, int) {
+	type aggregate struct {
+		item      model.EvidenceStatus
+		purchases map[string]struct{}
+	}
+	items := map[string]*aggregate{}
+	add := func(kind, value, purchaseID, matchedNode string) {
+		if kind == "" || value == "" {
+			return
+		}
+		key := kind + "\x00" + value
+		item, exists := items[key]
+		if !exists {
+			item = &aggregate{item: model.EvidenceStatus{Kind: kind, Value: value}, purchases: map[string]struct{}{}}
+			items[key] = item
+		}
+		if purchaseID != "" {
+			item.purchases[purchaseID] = struct{}{}
+		}
+		if matchedNode != "" {
+			item.item.Matched = true
+			item.item.MatchedNodeID = matchedNode
+		}
+	}
+	for _, purchase := range purchases {
+		for _, txid := range purchase.TxIDs {
+			add("transaction", txid, purchase.ID, "")
+		}
+		for _, outpoint := range purchase.Outpoints {
+			add("outpoint", outpoint.String(), purchase.ID, "")
+		}
+		for _, address := range purchase.Addresses {
+			add("address", address, purchase.ID, "")
+		}
+	}
+	for _, boundary := range boundaries {
+		add(boundary.MatchedEvidenceKind, boundary.MatchedEvidenceValue, "", boundary.NodeID)
+		for _, purchaseID := range boundary.PurchaseIDs {
+			add(boundary.MatchedEvidenceKind, boundary.MatchedEvidenceValue, purchaseID, boundary.NodeID)
+		}
+	}
+	result := make([]model.EvidenceStatus, 0, len(items))
+	unmatched := 0
+	for _, item := range items {
+		ids := make([]string, 0, len(item.purchases))
+		for id := range item.purchases {
+			ids = append(ids, id)
+		}
+		item.item.PurchaseIDs = ids
+		if len(ids) > 0 {
+			sort.Strings(item.item.PurchaseIDs)
+		}
+		if !item.item.Matched {
+			unmatched++
+		}
+		result = append(result, item.item)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Kind != result[j].Kind {
+			return result[i].Kind < result[j].Kind
+		}
+		return result[i].Value < result[j].Value
+	})
+	return result, unmatched
 }
 
 func finalizedGraph(g *evaluationGraph) model.Graph {
@@ -418,6 +503,7 @@ func Evaluate(trace model.Trace, purchases []model.Purchase, annotations model.A
 			BestBlock:  trace.BestBlock,
 			BestHeight: trace.BestHeight,
 		},
+		Policy:      trace.Policy,
 		Warnings:    make([]string, 0),
 		Purchases:   append([]model.Purchase(nil), purchases...),
 		UTXOs:       make([]model.Target, 0, len(trace.Targets)),
@@ -465,6 +551,14 @@ func Evaluate(trace model.Trace, purchases []model.Purchase, annotations model.A
 		if result.incomplete {
 			target.Trace = incompleteTraceStatus
 		}
+		if len(result.reviewReasons) > 0 {
+			target.ReviewRequired = true
+			target.ReviewReasons = make([]string, 0, len(result.reviewReasons))
+			for reason := range result.reviewReasons {
+				target.ReviewReasons = append(target.ReviewReasons, reason)
+			}
+			sort.Strings(target.ReviewReasons)
+		}
 		if result.cycle {
 			warningSet[targetRef.Key()+": cycle detected while evaluating provenance"] = struct{}{}
 		}
@@ -487,8 +581,13 @@ func Evaluate(trace model.Trace, purchases []model.Purchase, annotations model.A
 		if target.Trace == incompleteTraceStatus {
 			report.Summary.IncompleteUTXOs++
 		}
+		if target.ReviewRequired {
+			report.Summary.ReviewUTXOs++
+		}
 		report.UTXOs = append(report.UTXOs, target)
 	}
+
+	report.Evidence, report.Summary.UnmatchedEvidence = evidenceStatuses(purchases, trace.Boundaries)
 
 	sort.SliceStable(report.UTXOs, func(i, j int) bool {
 		if report.UTXOs[i].TxID != report.UTXOs[j].TxID {

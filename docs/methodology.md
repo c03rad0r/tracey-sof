@@ -23,10 +23,11 @@ Bitcoin's UTXO model does not tell you which individual sats from several inputs
 - `trace_status=incomplete`: at least one required step failed, was capped, or was structurally invalid.
 
 An incomplete graph can contain a confirmed purchase. It must not be shown as proof that more documentation does not exist. Coinbase is a known origin but not a purchase record.
+A policy boundary (hop, transaction, large ancestor value, fan-in/fan-out, or block-height cutoff) also produces `review_required=true`. Large-value and batch-pattern rules are not ownership or exchange-attribution proofs. They stop traversal and identify a branch for investigation. Reports list whether each supplied purchase transaction ID, outpoint, and address was observed, so an unmatched invoice can be distinguished from a truncated trace.
 
 ## Reports
 
-`report.csv` has one row per current target UTXO. Fully documented sat totals count only fully documented targets; the tool does not divide a partially documented target between invoices.
+`report.csv` has one row per current target UTXO, including `review_required` and review reasons. `evidence.csv` lists every supplied purchase txid, outpoint, and address with its matched/unmatched state and boundary node. Fully documented sat totals count only fully documented targets; the tool does not divide a partially documented target between invoices.
 
 `report.html` is a self-contained interactive graph. `report.svg` is static and contains no JavaScript. `report.pdf` is printed locally through Chromium. `accountant.zip` adds a methodology note, user inputs, selected evidence files, and `manifest.sha256` covering all other bundle entries.
 

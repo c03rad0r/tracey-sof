@@ -38,12 +38,13 @@ On 2026-11-10, against the synchronized Bitcoin Core v31.1.0 node on `dq05`:
 - HTML, JSON, CSV, SVG, and PDF were generated successfully.
 - `accountant.zip` contained methodology, all report formats, the three JSON inputs, and a manifest. Nine manifest hashes independently matched nine payload files (the tenth entry is the manifest itself).
 - A real loopback UI test saved a transaction annotation and rejected a cross-origin annotation attempt.
+- A real policy cutoff against the first-transfer fixture produced an incomplete trace with `review_required=true`, without fetching the parent beyond the cutoff.
 
 The smoke inputs, RPC credentials, reports, and caches used for this test are excluded from source control. They exercise public blockchain data, not private purchase evidence.
 
 ## Coverage interpretation
 
-`web/graph.js` is gated at 100% statement, branch, function, and line coverage with Node's built-in coverage runner. The Go `internal/provenance` analysis package independently reached 100% statement coverage and passed its race-enabled tests. Repository-wide Go coverage and its remaining work are measured by `make coverage`; see `PLAN.md` for current checklist status. Do not equate statement coverage alone with correctness: real mainnet and browser integration checks remain mandatory.
+`web/graph.js` is gated at 100% statement, branch, function, and line coverage with Node's built-in coverage runner. The current complete run has 100.00% statement coverage across all first-party Go packages (2215/2215 statements), and the JavaScript graph utilities also pass 100% statement/branch/function/line gates. `make release-check` passed on 2026-11-11 against the live `dq05` node. Coverage is necessary but not sufficient: real mainnet and browser integration checks remain mandatory.
 
 ## Limitations reviewers should check
 

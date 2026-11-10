@@ -24,12 +24,15 @@ This file is the implementation plan and living checklist for this project. Upda
 6. **Status model:** documentation (`documented`, `partially_documented`, `undocumented`) and traversal (`complete`, `incomplete`) are independent. Incomplete is never converted into proven absence of documentation.
 7. **Privacy:** no key material is accepted, no wallet is imported, no signing RPC is called, and the web service binds to loopback. Private inputs, annotations, caches, and exports are not versioned.
 8. **Implementation:** Go for a small CLI, RPC, analysis, persistence, and export pipeline; HTML/CSS/JavaScript for the offline interface. Satoshis remain integers and BTC JSON values are parsed exactly.
+9. **Trace policy boundaries:** optional JSON policies may cap hops/transactions, stop at a large ancestor output, stop at large input/output counts, or stop before a block height. These boundaries are auditable safety/review controls, never purchase evidence. A heuristic stop leaves the target incomplete and review-required. The large-value rule applies to an ancestor output being traversed, not to the current target's total value.
+10. **Unmatched evidence diagnostics:** reports list supplied purchase transaction IDs, outpoints, and addresses that were not encountered, so missing matches can be investigated without mistaking them for proof.
 
 ## Planned files and commands
 
 - `data/owned.json`: current addresses, xpub configurations, descriptors, and explicit outpoints.
 - `data/purchases.json`: purchase IDs, txids, associated addresses, outpoints, optional amounts, notes, and local evidence artifacts with SHA-256 hashes.
 - `data/annotations.json`: labels, notes, and manual review decisions, written atomically by the UI.
+- `data/trace-policy.json`: optional auditable limits for hops, transaction count, large ancestor values, fan-in/fan-out, and block-height cutoff.
 - `schema/`: versioned JSON Schemas.
 - `examples/`: sanitized inputs and an offline mainnet-fixture report.
 - `internal/core`: read-only RPC, chain capability checks, and cache.
@@ -91,13 +94,23 @@ make release-check
 ### 5. Mainnet and quality verification
 
 - [x] **P5.1** Add documented immutable real-mainnet fixtures, including the block-170 transfer `f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16`, its coinbase parent, and representative multi-input/segwit cases.
-- [ ] **P5.2** Cover unit, RPC, malformed input, graph, matching, cache, annotation, report, security, UI, and CLI behavior with automated tests. **In progress:** functional suites pass when in-flight coverage-test files are complete; CLI/server/fixture coverage is still being expanded.
-- [ ] **P5.3** Enforce 100% statement and branch coverage for first-party Go and JavaScript analysis modules; browser integration tests supplement coverage rather than substitute for it. **The user explicitly confirmed the literal 100% target after the remaining defensive filesystem/marshal gaps were identified.** Current measured repository-wide Go statement coverage is **94.86%**; narrowly scoped fault-injection is required for the remaining low-level I/O branches. Go uses standard statement-coverage profiles plus explicit success/failure-path cases; JavaScript additionally enforces branch/function/line metrics. No unmeasured control-flow coverage metric is claimed for Go.
+- [x] **P5.2** Cover unit, RPC, malformed input, graph, matching, cache, annotation, report, security, UI, and CLI behavior with automated tests.
+- [x] **P5.3** Enforce 100% statement and branch coverage for first-party Go and JavaScript analysis modules; browser integration tests supplement coverage rather than substitute for it. **Verified on 2026-11-11: Go 100.00% (2215/2215 statements); JavaScript 100% statement/branch/function/line.** No unmeasured control-flow coverage metric is claimed for Go.
 - [x] **P5.4** Run read-only tests against a real Core node where available, and record any genuinely unavailable external validation explicitly.
 - [x] **P5.5** Generate and inspect offline HTML, SVG, PDF, and accountant artifacts; assert no third-party requests.
-- [ ] **P5.6** Require `make release-check` to pass before declaring the project release-qualified. **Development publication was explicitly authorized on the current `main` branch while coverage work continues; this is not a release tag or a claim that the 100% gate has passed.** No release tag will be created until the gate passes.
+- [x] **P5.6** Require `make release-check` to pass before declaring the project release-qualified. **A development snapshot was published to <https://github.com/c03rad0r/tracey-sof> on `main` at commit `0cb5b1255dd92d84155d0e21734dbc6601f4eca4`.** The current local tree passes the complete release gate and includes the trace-policy follow-up; publication of those follow-up changes requires a new commit/push confirmation. No release tag has been created.
 
-### 6. Explicitly deferred
+### 6. Trace policy and unmatched evidence
+
+- [x] **P6.1** Define optional `trace-policy.json` schema and strict loader for hop/transaction limits, large ancestor value, fan-in/fan-out, and block-height cutoff.
+- [x] **P6.2** Apply every policy rule during exact traversal, deduplicate boundaries, preserve existing explicit evidence priority, and record the effective policy in the trace.
+- [x] **P6.3** Mark policy/limit boundaries as review-required and incomplete; never classify them as documented purchases or allocate sats.
+- [x] **P6.4** Add matched/unmatched purchase-evidence diagnostics to JSON/CSV/HTML reports and display the effective policy and review summary.
+- [x] **P6.5** Reject stale reports when `trace-policy.json` no longer matches the cached trace; require a fresh audit rather than silently applying old boundaries.
+- [x] **P6.6** Add documentation, sanitized policy examples, report explanations, and Make workflow notes.
+- [x] **P6.7** Test every rule, precedence, exact thresholds, malformed policy, stale policy, report fields, status/review semantics, and rerun the full offline suite, live-node check, and release gate. **All rule/precedence/report tests pass; `make release-check` passed with 100% Go/JavaScript coverage and live `dq05` policy verification.**
+
+### 7. Explicitly deferred
 
 - [ ] Historical spent-address discovery when no current UTXO is supplied.
 - [ ] Self-hosted Esplora adapter.

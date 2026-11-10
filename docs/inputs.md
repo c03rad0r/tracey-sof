@@ -92,6 +92,36 @@ The most useful invoice-to-chain links are an exact purchase **txid** or receive
 
 Artifact paths are relative to `data/`, cannot escape that directory, and are checked byte-for-byte against SHA-256. Obtain an artifact hash locally, for example with `sha256sum data/evidence/receipt.pdf`. Artifact content is never uploaded or executed by the application.
 
+## `data/trace-policy.json`
+
+This optional file limits expensive or unproductive ancestry traversal:
+
+```json
+{
+  "schema_version": 1,
+  "max_hops": 8,
+  "max_transactions": 250,
+  "stop_if_prevout_value_sats_gte": 500000000,
+  "stop_if_input_count_gte": 50,
+  "stop_if_output_count_gte": 50,
+  "stop_before_block_height": 600000
+}
+```
+
+All stop thresholds are optional and zero/omitted means disabled. `max_hops` and `max_transactions` default to 25 and 10,000 when omitted.
+
+- `stop_if_prevout_value_sats_gte` applies to an **ancestor output that the tracer is about to follow**, not to the current UTXO's total value.
+- `stop_if_input_count_gte` and `stop_if_output_count_gte` apply to a transaction before its inputs are expanded. They are useful for exchange consolidation and batched-payout patterns.
+- `stop_before_block_height` stops before expanding a transaction mined below the configured height.
+- Exact purchase txids/outpoints/addresses take precedence over policy stops. Coinbase is also identified before policy rules.
+- A policy stop sets `review_required=true` and `trace_status=incomplete`. It **never** proves that the output came from an exchange and never changes it to `documented`.
+- Every boundary records the rule, observed value/count, threshold, and participating node/transaction.
+- If the file is present it is authoritative over legacy `TRACE_MAX_DEPTH` and `TRACE_MAX_TRANSACTIONS` environment variables.
+
+An exchange withdrawal transaction from a statement is stronger evidence than a large-value threshold. Add that exact txid or outpoint to `purchases.json` and attach the statement as an artifact.
+
+Changing this file does not alter an existing trace. Rerun `make audit`; `make report` will reject a cached trace whose policy differs from the current policy.
+
 ## `data/annotations.json`
 
 The loopback UI writes transaction and address labels to this file with an atomic replacement. It is fine to leave the maps empty initially:
@@ -133,6 +163,6 @@ make export                      # accountant.zip and manifest
 make example                     # public mainnet fixture example; no Core needed
 ```
 
-`report` reuses cached trace data and current label/note annotations, so labels can be reviewed without another chain scan. `export` regenerates reports before bundling them, including the latest annotations. **Changing `purchases.json` or `purchase_links` requires a fresh `make audit`.** A fresh trace is needed both to stop at newly confirmed evidence and to resume beyond evidence that has been rejected; rejecting a purchase cannot conjure ancestors that the old trace never fetched. `SOF_LISTEN=127.0.0.1:8766 make ui` chooses another loopback port.
+`report` reuses cached trace data and current label/note annotations, so labels can be reviewed without another chain scan. `export` regenerates reports before bundling them, including the latest annotations. **Changing `purchases.json`, `purchase_links`, or `trace-policy.json` requires a fresh `make audit`.** A fresh trace is needed both to stop at newly confirmed evidence and to resume beyond evidence that has been rejected; rejecting a purchase cannot conjure ancestors that the old trace never fetched. `SOF_LISTEN=127.0.0.1:8766 make ui` chooses another loopback port.
 
-Typical overrides are `TRACE_MAX_DEPTH`, `TRACE_MAX_TRANSACTIONS`, `CHROMIUM`, `DATA_DIR`, `OUT_DIR`, `CACHE_DIR`, and `ENV_FILE`. The chain tip is checked before and after discovery/tracing; a reorganized or partially synced node is not allowed to produce a current-UTXO audit silently.
+Typical overrides are `TRACE_MAX_DEPTH`, `TRACE_MAX_TRANSACTIONS`, `CHROMIUM`, `DATA_DIR`, `OUT_DIR`, `CACHE_DIR`, and `ENV_FILE`. Environment hop/transaction limits apply only when `data/trace-policy.json` is absent. The chain tip is checked before and after discovery/tracing; a reorganized or partially synced node is not allowed to produce a current-UTXO audit silently.
