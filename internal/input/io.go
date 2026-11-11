@@ -118,6 +118,54 @@ func SaveAnnotations(path string, file model.AnnotationFile) error {
 	return saveAnnotations(path, file, json.MarshalIndent, osAnnotationFileStore{})
 }
 
+func SavePurchases(path string, file model.PurchaseFile, verifyArtifacts bool) error {
+	return savePurchases(path, file, verifyArtifacts, json.MarshalIndent, osAnnotationFileStore{})
+}
+
+func savePurchases(path string, file model.PurchaseFile, verifyArtifacts bool, indent jsonIndenter, files annotationFileStore) error {
+	if err := ValidatePurchases(file, filepath.Dir(path), verifyArtifacts); err != nil {
+		return err
+	}
+	data, err := indent(file, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode purchases: %w", err)
+	}
+	data = append(data, '\n')
+	return saveJSONAtomic(path, ".purchases-*.tmp", data, files)
+}
+
+func saveJSONAtomic(path, pattern string, data []byte, files annotationFileStore) error {
+	dir := filepath.Dir(path)
+	if err := files.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+	tmp, err := files.CreateTemp(dir, pattern)
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+	name := tmp.Name()
+	defer files.Remove(name)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("set permissions: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close file: %w", err)
+	}
+	if err := files.Rename(name, path); err != nil {
+		return fmt.Errorf("replace file: %w", err)
+	}
+	return nil
+}
+
 func saveAnnotations(path string, file model.AnnotationFile, indent jsonIndenter, files annotationFileStore) error {
 	if err := ValidateAnnotations(file); err != nil {
 		return err

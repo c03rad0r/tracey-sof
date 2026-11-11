@@ -46,7 +46,7 @@ func TestRunRejectsMissingUnknownCommandsAndFlagErrors(t *testing.T) {
 		t.Fatalf("unknown-command error = %v", err)
 	}
 
-	commands := []string{"validate", "node-check", "discover", "trace", "report", "audit", "ui", "export", "example", "test-node", "pdf"}
+	commands := []string{"validate", "node-check", "discover", "trace", "report", "audit", "ui", "export", "example", "test-node", "pdf", "intake", "resolve-intake", "review-intake", "promote-intake"}
 	for _, command := range commands {
 		t.Run(command, func(t *testing.T) {
 			stdout.Reset()

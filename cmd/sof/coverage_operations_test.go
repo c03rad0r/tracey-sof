@@ -210,3 +210,45 @@ func TestTestNodeInjectedFailureStages(t *testing.T) {
 		}
 	})
 }
+
+func TestTestNodeResolutionFailureStages(t *testing.T) {
+	app := application{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+	t.Run("address resolution error", func(t *testing.T) {
+		fake := newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		fake.beforeRPC = func(method string, _ int) error {
+			if method == "scantxoutset" {
+				return errors.New("address resolution failure")
+			}
+			return nil
+		}
+		if err := app.testNode(context.Background(), p); err == nil || !strings.Contains(err.Error(), "address resolution failure") {
+			t.Fatalf("address resolution error = %v", err)
+		}
+	})
+	t.Run("snapshot mismatch", func(t *testing.T) {
+		fake := newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		fake.afterRPC = func(method string, call int) {
+			if method == "getblockchaininfo" && call == 1 {
+				fake.tip.BlockHash = strings.Repeat("f", 64)
+			}
+		}
+		if err := app.testNode(context.Background(), p); err == nil || !strings.Contains(err.Error(), "inconsistent snapshot") {
+			t.Fatalf("snapshot mismatch = %v", err)
+		}
+	})
+	t.Run("transaction resolution error", func(t *testing.T) {
+		fake := newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		fake.beforeRPC = func(method string, call int) error {
+			if method == "getrawtransaction" && call == 4 {
+				return errors.New("transaction resolution failure")
+			}
+			return nil
+		}
+		if err := app.testNode(context.Background(), p); err == nil || !strings.Contains(err.Error(), "transaction resolution failed") {
+			t.Fatalf("transaction resolution error = %v", err)
+		}
+	})
+}

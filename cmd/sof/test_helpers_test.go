@@ -9,9 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
 	"tracey-sof/internal/core"
 	"tracey-sof/internal/fixtures"
 	"tracey-sof/internal/input"
@@ -160,6 +164,48 @@ func (fake *cliFakeCore) result(call cliRPCRequest) (any, error) {
 			}
 		}
 		return nil, fmt.Errorf("unknown block height %.0f", height)
+	case "getdescriptorinfo":
+		if len(call.Params) != 1 {
+			return nil, fmt.Errorf("unexpected getdescriptorinfo params %#v", call.Params)
+		}
+		return map[string]any{"descriptor": fmt.Sprint(call.Params[0]) + "#checksum"}, nil
+	case "scantxoutset":
+		transaction, err := core.DecodeTransaction(fake.fixtures[firstTransfer].Hex)
+		if err != nil {
+			return nil, err
+		}
+		var unspents []any
+		if len(call.Params) >= 2 {
+			if objects, ok := call.Params[1].([]any); ok {
+				for _, raw := range objects {
+					object, ok := raw.(map[string]any)
+					if !ok {
+						continue
+					}
+					desc, _ := object["desc"].(string)
+					start := strings.Index(desc, "addr(")
+					end := strings.Index(desc, ")")
+					if start < 0 || end <= start {
+						continue
+					}
+					address := desc[start+5 : end]
+					decoded, err := btcutil.DecodeAddress(address, &chaincfg.MainNetParams)
+					if err != nil {
+						return nil, err
+					}
+					script, err := txscript.PayToAddrScript(decoded)
+					if err != nil {
+						return nil, err
+					}
+					unspents = append(unspents, map[string]any{
+						"txid": firstTransfer, "vout": 0, "scriptPubKey": hex.EncodeToString(script),
+						"amount": json.Number(core.SatString(transaction.Outputs[0].ValueSats)),
+						"height": fake.tip.BlockHeight, "blockhash": fake.tip.BlockHash,
+					})
+				}
+			}
+		}
+		return map[string]any{"success": true, "height": fake.tip.BlockHeight, "bestblock": fake.tip.BlockHash, "unspents": unspents}, nil
 	case "gettxout":
 		if len(call.Params) != 3 || call.Params[0] != firstTransfer || call.Params[1] != float64(0) {
 			return nil, fmt.Errorf("unexpected gettxout params %#v", call.Params)
@@ -252,6 +298,7 @@ func newCLIPaths(t *testing.T, chromiumAccessible bool) paths {
 		cacheDir: filepath.Join(root, "cache"),
 		outDir:   filepath.Join(root, "out"),
 		fixtures: cliFixtureDirectory(),
+		inbox:    filepath.Join(root, "data", "inbox"),
 	}
 }
 
@@ -357,6 +404,7 @@ func cliCommandArguments(command string, p paths, extra ...string) []string {
 		"-cache-dir", p.cacheDir,
 		"-out-dir", p.outDir,
 		"-fixtures", p.fixtures,
+		"-inbox", p.inbox,
 	}
 	return append(arguments, extra...)
 }

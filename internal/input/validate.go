@@ -34,6 +34,13 @@ func validHash(s string) bool {
 	return err == nil
 }
 
+// ValidTxID reports whether value is a canonical lowercase 64-character hex txid.
+func ValidTxID(value string) bool { return validHash(value) }
+
+// ValidateMainnetAddress applies the same canonical mainnet checks used by the
+// owned and purchase input loaders.
+func ValidateMainnetAddress(address string) error { return validateAddress(address) }
+
 func validateAddress(address string) error {
 	addr, err := btcutil.DecodeAddress(address, &chaincfg.MainNetParams)
 	if err != nil {
