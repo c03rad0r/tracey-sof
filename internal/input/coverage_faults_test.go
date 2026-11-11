@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tracey-sof/internal/model"
@@ -114,5 +115,40 @@ func TestCoverageArtifactCloseFailure(t *testing.T) {
 	err := verifyArtifactWithClose(dir, model.Artifact{Path: "receipt", SHA256: sum}, func(*os.File) error { return errors.New("close failure") })
 	if err == nil {
 		t.Fatal("artifact close failure was accepted")
+	}
+}
+
+func TestCoverageSavePurchasesAndJSONAtomicFailures(t *testing.T) {
+	valid := model.PurchaseFile{SchemaVersion: model.SchemaVersion, Purchases: []model.Purchase{{ID: "purchase-one"}}}
+	path := filepath.Join(t.TempDir(), "purchases.json")
+	if err := SavePurchases(path, valid, false); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadPurchases(path, false)
+	if err != nil || len(loaded.Purchases) != 1 || loaded.Purchases[0].ID != "purchase-one" {
+		t.Fatalf("purchases round trip = %+v, %v", loaded, err)
+	}
+	if err := SavePurchases(path, model.PurchaseFile{SchemaVersion: model.SchemaVersion}, false); err == nil {
+		t.Fatal("empty purchases file was saved")
+	}
+	if err := savePurchases(path, valid, false, func(any, string, string) ([]byte, error) { return nil, errors.New("marshal failure") }, &inputFaultStore{}); err == nil {
+		t.Fatal("purchase marshal failure accepted")
+	}
+	for _, stage := range []string{"mkdir", "create", "chmod", "write", "sync", "close", "rename"} {
+		t.Run(stage, func(t *testing.T) {
+			store := &inputFaultStore{stage: stage}
+			if err := saveJSONAtomic("ignored", ".purchases-*.tmp", []byte("{}\n"), store); err == nil {
+				t.Fatalf("%s failure was accepted", stage)
+			}
+			if (stage == "chmod" || stage == "write" || stage == "sync") && store.file.closed != 1 {
+				t.Fatalf("temporary file not closed after %s failure", stage)
+			}
+		})
+	}
+	if !ValidTxID(strings.Repeat("a", 64)) || ValidTxID(strings.Repeat("A", 64)) || ValidTxID("bad") {
+		t.Fatal("ValidTxID failed")
+	}
+	if ValidateMainnetAddress("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") != nil || ValidateMainnetAddress("bad") == nil {
+		t.Fatal("ValidateMainnetAddress failed")
 	}
 }

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tracey-sof:purchase-intake:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "sources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "value", "role", "confidence", "review"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+        "kind": {"enum": ["address", "txid", "outpoint"]},
+        "value": {"type": "string", "minLength": 1},
+        "role": {"enum": ["received_at", "purchase_txid", "purchase_outpoint", "paid_to", "operator_address", "unknown"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "line": {"type": "integer", "minimum": 0},
+        "resolution": {"$ref": "#/$defs/resolution"},
+        "review": {"$ref": "#/$defs/review"}
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "valid": {"type": "boolean"},
+        "canonical": {"type": "string"},
+        "current_utxos": {"type": "array", "items": {"$ref": "#/$defs/utxo"}},
+        "txid_exists": {"type": "boolean"},
+        "block_height": {"type": "integer", "minimum": 0},
+        "outpoint_exists": {"type": "boolean"},
+        "in_trace": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    },
+    "utxo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outpoint", "value_sats"],
+      "properties": {
+        "outpoint": {"type": "string", "pattern": "^[0-9a-f]{64}:[0-9]+$"},
+        "address": {"type": "string"},
+        "value_sats": {"type": "integer", "minimum": 0},
+        "confirmations": {"type": "integer", "minimum": 0},
+        "block_height": {"type": "integer", "minimum": 0}
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision"],
+      "properties": {
+        "decision": {"enum": ["pending", "accepted", "rejected"]},
+        "note": {"type": "string"}
+      }
+    },
+    "purchase": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+        "date": {"type": "string", "format": "date-time"},
+        "provider": {"type": "string"},
+        "amount_sats": {"type": "integer", "minimum": 1},
+        "fiat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amount", "currency"],
+          "properties": {
+            "amount": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,18})?$"},
+            "currency": {"type": "string", "pattern": "^[A-Z]{3}$"}
+          }
+        },
+        "notes": {"type": "string"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "sha256", "media_type", "extraction", "candidates", "purchase"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "media_type": {"type": "string", "minLength": 1},
+        "extraction": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "candidates": {"type": "array", "items": {"$ref": "#/$defs/candidate"}},
+        "purchase": {"$ref": "#/$defs/purchase"}
+      }
+    }
+  }
+}

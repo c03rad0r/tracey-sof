@@ -18,17 +18,29 @@ install -m 600 examples/owned.example.json data/owned.json
 install -m 600 examples/purchases.example.json data/purchases.json
 install -m 600 examples/annotations.example.json data/annotations.json
 install -m 600 examples/trace-policy.example.json data/trace-policy.json
+install -d -m 700 data/inbox
 # Edit node.env and replace every example identifier with your own public data.
 make node-check
 make audit
 make ui
 ```
 
+To start from scanned ATM receipts or address lists, place the files under `data/inbox/` and use the intake workflow before `make audit`:
+
+```sh
+make intake
+make resolve-intake
+make review-intake
+make promote-intake
+make audit
+```
+
+
 The service listens on `127.0.0.1` by default. Never expose the annotation server or Bitcoin RPC directly to the public internet. Xpubs, addresses, purchase records, and their combined transaction graph are sensitive financial information. See [`docs/inputs.md`](docs/inputs.md) for complete JSON examples and [`docs/bitcoin-core.md`](docs/bitcoin-core.md) for node configuration.
 
 Outputs are written below `out/`. `make example` runs without a node or private data. `make help` lists all supported commands.
 
-`make report` and `make export` reuse the cached ancestry for label/note edits. After editing purchase records, `purchase_links`, or `data/trace-policy.json`, always rerun `make audit` so evidence and policy boundaries are recomputed.
+`make report` and `make export` reuse the cached ancestry for label/note edits. After editing purchase records, `purchase_links`, `data/trace-policy.json`, or promoted intake evidence, always rerun `make audit` so evidence and policy boundaries are recomputed.
 
 ## Evidence limits
 

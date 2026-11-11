@@ -23,6 +23,7 @@ Bitcoin's UTXO model does not tell you which individual sats from several inputs
 - `trace_status=incomplete`: at least one required step failed, was capped, or was structurally invalid.
 
 An incomplete graph can contain a confirmed purchase. It must not be shown as proof that more documentation does not exist. Coinbase is a known origin but not a purchase record.
+A purchase-intake candidate is not evidence. OCR or list extraction only proposes an address, txid, or outpoint; a human must assign a source-of-funds role and accept it before promotion into `purchases.json`. Paid-to and operator addresses are excluded even when they appear in the traced graph.
 A policy boundary (hop, transaction, large ancestor value, fan-in/fan-out, or block-height cutoff) also produces `review_required=true`. Large-value and batch-pattern rules are not ownership or exchange-attribution proofs. They stop traversal and identify a branch for investigation. Reports list whether each supplied purchase transaction ID, outpoint, and address was observed, so an unmatched invoice can be distinguished from a truncated trace.
 
 ## Reports

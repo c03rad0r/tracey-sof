@@ -1,6 +1,6 @@
 # Source-of-Funds UTXO Provenance Plan
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 This file is the implementation plan and living checklist for this project. Update it whenever scope, architecture, commands, or completion status changes. A checked item means both its implementation and relevant verification are complete.
 
@@ -26,6 +26,7 @@ This file is the implementation plan and living checklist for this project. Upda
 8. **Implementation:** Go for a small CLI, RPC, analysis, persistence, and export pipeline; HTML/CSS/JavaScript for the offline interface. Satoshis remain integers and BTC JSON values are parsed exactly.
 9. **Trace policy boundaries:** optional JSON policies may cap hops/transactions, stop at a large ancestor output, stop at large input/output counts, or stop before a block height. These boundaries are auditable safety/review controls, never purchase evidence. A heuristic stop leaves the target incomplete and review-required. The large-value rule applies to an ancestor output being traversed, not to the current target's total value.
 10. **Unmatched evidence diagnostics:** reports list supplied purchase transaction IDs, outpoints, and addresses that were not encountered, so missing matches can be investigated without mistaking them for proof.
+11. **Purchase intake:** scanned receipts and address lists are extracted into a staging file, never directly into `purchases.json`. Candidate roles distinguish received-at addresses and purchase txids/outpoints from paid-to and operator addresses. OCR output is untrusted, local, and optional; promotion requires explicit human review. Resolution uses only the current UTXO set; historical spent-address discovery remains deferred.
 
 ## Planned files and commands
 
@@ -33,9 +34,11 @@ This file is the implementation plan and living checklist for this project. Upda
 - `data/purchases.json`: purchase IDs, txids, associated addresses, outpoints, optional amounts, notes, and local evidence artifacts with SHA-256 hashes.
 - `data/annotations.json`: labels, notes, and manual review decisions, written atomically by the UI.
 - `data/trace-policy.json`: optional auditable limits for hops, transaction count, large ancestor values, fan-in/fan-out, and block-height cutoff.
+- `data/purchase-intake.json`: staged receipt/address candidates and source hashes; never consumed by audit until promoted.
 - `schema/`: versioned JSON Schemas.
 - `examples/`: sanitized inputs and an offline mainnet-fixture report.
 - `internal/core`: read-only RPC, chain capability checks, and cache.
+- `internal/intake`: local receipt/list extraction, candidate staging, current-UTXO resolution, review, and promotion.
 - `internal/model`, `internal/input`, `internal/provenance`: normalized model, validation, graph traversal, evidence matching, and classification.
 - `internal/report`: JSON/CSV/HTML/SVG/PDF and accountant bundle generation.
 - `internal/server`: loopback annotation/report UI API.
@@ -51,6 +54,16 @@ make node-check
 make audit
 make ui
 make export
+```
+
+Purchase intake workflow:
+
+```sh
+make intake
+make resolve-intake
+make review-intake
+make promote-intake
+make audit
 ```
 
 Quality workflow:
@@ -95,10 +108,10 @@ make release-check
 
 - [x] **P5.1** Add documented immutable real-mainnet fixtures, including the block-170 transfer `f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16`, its coinbase parent, and representative multi-input/segwit cases.
 - [x] **P5.2** Cover unit, RPC, malformed input, graph, matching, cache, annotation, report, security, UI, and CLI behavior with automated tests.
-- [x] **P5.3** Enforce 100% statement and branch coverage for first-party Go and JavaScript analysis modules; browser integration tests supplement coverage rather than substitute for it. **Verified on 2026-11-11: Go 100.00% (2215/2215 statements); JavaScript 100% statement/branch/function/line.** No unmeasured control-flow coverage metric is claimed for Go.
+- [x] **P5.3** Enforce 100% statement and branch coverage for first-party Go and JavaScript analysis modules; browser integration tests supplement coverage rather than substitute for it. **Verified on 2026-11-11 after purchase intake: Go 100.00% (3131/3131 statements); JavaScript 100% statement/branch/function/line.** No unmeasured control-flow coverage metric is claimed for Go.
 - [x] **P5.4** Run read-only tests against a real Core node where available, and record any genuinely unavailable external validation explicitly.
 - [x] **P5.5** Generate and inspect offline HTML, SVG, PDF, and accountant artifacts; assert no third-party requests.
-- [x] **P5.6** Require `make release-check` to pass before declaring the project release-qualified. **A development snapshot was published to <https://github.com/c03rad0r/tracey-sof> on `main` at commit `0cb5b1255dd92d84155d0e21734dbc6601f4eca4`.** The current local tree passes the complete release gate and includes the trace-policy follow-up; publication of those follow-up changes requires a new commit/push confirmation. No release tag has been created.
+- [x] **P5.6** Require `make release-check` to pass before declaring the project release-qualified. **A development snapshot was published to <https://github.com/c03rad0r/tracey-sof> on `main` at commit `0cb5b1255dd92d84155d0e21734dbc6601f4eca4`.** The completed trace-policy follow-up (`tracey-sof/0.2.0`) passed the full release gate and was authorized for commit/push on 2026-11-11. The purchase-intake follow-up (`tracey-sof/0.3.0`) also passed the live release gate. No release tag has been created.
 
 ### 6. Trace policy and unmatched evidence
 
@@ -110,7 +123,20 @@ make release-check
 - [x] **P6.6** Add documentation, sanitized policy examples, report explanations, and Make workflow notes.
 - [x] **P6.7** Test every rule, precedence, exact thresholds, malformed policy, stale policy, report fields, status/review semantics, and rerun the full offline suite, live-node check, and release gate. **All rule/precedence/report tests pass; `make release-check` passed with 100% Go/JavaScript coverage and live `dq05` policy verification.**
 
-### 7. Explicitly deferred
+### 7. Purchase intake
+
+- [x] **P7.1** Define a versioned `purchase-intake.json` schema and strict local loader/saver with source hashes, candidate roles, confidence, resolution, and review state.
+- [x] **P7.2** Scan local PDFs, images, CSV/TSV, TXT, and JSON; use optional `pdftotext`, `pdftoppm`, and `tesseract` adapters with timeout and size limits.
+- [x] **P7.3** Extract and validate mainnet addresses, txids, and outpoints without auto-trusting OCR dates or amounts.
+- [x] **P7.4** Resolve candidate addresses through Core's current UTXO set and confirm txids/outpoints read-only; optionally mark candidates observed in the cached trace.
+- [x] **P7.5** Provide CLI review commands for role assignment, accept/reject/pending, purchase metadata, and listing.
+- [x] **P7.6** Promote only accepted, role-confirmed evidence into `purchases.json`, attach source artifacts and hashes, require human review, and refuse paid-to/operator/unknown roles.
+- [x] **P7.7** Add `make intake`, `make resolve-intake`, `make review-intake`, and `make promote-intake` without changing the audit path.
+- [x] **P7.8** Document the intake workflow, role semantics, OCR limitations, privacy rules, and deferred historical lookup.
+- [x] **P7.9** Test extraction, tokenization, CSV parsing, command failures, resolution, review, promotion, malformed staging files, path confinement, and atomic writes. **Verified with 100% Go statement coverage across all first-party packages.**
+- [x] **P7.10** Rerun `make verify`, `make release-check`, and live-node address/txid resolution before publication. **`make release-check` passed on the finished `tracey-sof/0.3.0` tree; live `dq05` verified current-UTXO address resolution and transaction resolution.**
+
+### 8. Explicitly deferred
 
 - [ ] Historical spent-address discovery when no current UTXO is supplied.
 - [ ] Self-hosted Esplora adapter.

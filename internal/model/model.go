@@ -8,7 +8,7 @@ import (
 )
 
 const SchemaVersion = 1
-const SoftwareVersion = "tracey-sof/0.2.0"
+const SoftwareVersion = "tracey-sof/0.3.0"
 
 const (
 	DefaultMaxHops         = 25

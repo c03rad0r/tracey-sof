@@ -78,11 +78,14 @@ func TestTestNodeVerifiesEveryRealFixtureThroughRPC(t *testing.T) {
 			t.Errorf("stdout %q does not contain %q", stdout.String(), want)
 		}
 	}
-	if got := fake.callsFor("getrawtransaction"); got != 3 {
-		t.Fatalf("getrawtransaction calls = %d, want one for each real fixture", got)
+	if got := fake.callsFor("getrawtransaction"); got != 4 {
+		t.Fatalf("getrawtransaction calls = %d, want fixture verification plus live resolution", got)
 	}
-	if got := fake.callsFor("getblockchaininfo"); got != 1 {
-		t.Fatalf("initial chain checks = %d, want 1", got)
+	if got := fake.callsFor("getblockchaininfo"); got != 3 {
+		t.Fatalf("chain checks = %d, want initial tip plus resolution snapshot", got)
+	}
+	if !strings.Contains(stdout.String(), "verified live address and transaction resolution") {
+		t.Fatalf("test-node did not verify live resolution: %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "verified first-transfer backward ancestry through its block-9 coinbase parent") {
 		t.Fatalf("test-node did not verify real ancestry: %q", stdout.String())

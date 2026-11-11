@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"tracey-sof/internal/intake"
+	"tracey-sof/internal/model"
 )
 
 func main() {
@@ -18,7 +21,7 @@ func main() {
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: sof <validate|node-check|discover|trace|report|audit|ui|export|example|test-node|pdf> [flags]")
+		return fmt.Errorf("usage: sof <validate|node-check|discover|trace|report|audit|ui|export|example|test-node|pdf|intake|resolve-intake|review-intake|promote-intake> [flags]")
 	}
 	app := application{stdout: stdout, stderr: stderr}
 	common := func(name string) (*flag.FlagSet, *paths) {
@@ -29,6 +32,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		fs.StringVar(&p.cacheDir, "cache-dir", "./cache", "private chain cache directory")
 		fs.StringVar(&p.outDir, "out-dir", "./out", "report output directory")
 		fs.StringVar(&p.fixtures, "fixtures", "./testdata/mainnet", "mainnet fixture directory")
+		fs.StringVar(&p.inbox, "inbox", "./data/inbox", "directory containing receipts, images, CSV, TXT, or JSON sources")
 		return fs, p
 	}
 	switch args[0] {
@@ -114,6 +118,52 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return app.pdf(ctx, *p)
+	case "intake":
+		fs, p := common("intake")
+		maxPages := fs.Int("max-pages", 20, "maximum PDF pages to OCR")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.intake(ctx, *p, *maxPages)
+	case "resolve-intake":
+		fs, p := common("resolve-intake")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.resolveIntake(ctx, *p)
+	case "review-intake":
+		fs, p := common("review-intake")
+		list := fs.Bool("list", false, "list candidates")
+		accept := fs.String("accept", "", "candidate ID to accept")
+		reject := fs.String("reject", "", "candidate ID to reject")
+		pending := fs.String("pending", "", "candidate ID to return to pending")
+		role := fs.String("role", "", "candidate role")
+		note := fs.String("note", "", "review note")
+		purchaseID := fs.String("purchase-id", "", "purchase ID for the source")
+		date := fs.String("date", "", "RFC3339 purchase date")
+		provider := fs.String("provider", "", "purchase provider")
+		amount := fs.Int64("amount-sats", 0, "positive purchase amount in satoshis")
+		fiatAmount := fs.String("fiat-amount", "", "fiat amount as a decimal string")
+		fiatCurrency := fs.String("fiat-currency", "", "three-letter fiat currency")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		options := intake.ReviewOptions{Accept: *accept, Reject: *reject, Pending: *pending, Role: *role, Note: *note,
+			PurchaseID: *purchaseID, Date: *date, Provider: *provider}
+		if *amount != 0 {
+			options.AmountSats = amount
+		}
+		if *fiatAmount != "" || *fiatCurrency != "" {
+			options.Fiat = &model.Fiat{Amount: *fiatAmount, Currency: *fiatCurrency}
+		}
+		return app.reviewIntake(*p, options, *list)
+	case "promote-intake":
+		fs, p := common("promote-intake")
+		replace := fs.Bool("replace", false, "replace an existing purchase with the same ID")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.promoteIntake(*p, *replace)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

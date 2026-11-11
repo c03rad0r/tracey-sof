@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-11T00:00:00Z",
+  "sources": [
+    {
+      "id": "src-example00001",
+      "path": "inbox/example-receipt.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "media_type": "text/plain",
+      "extraction": [
+        "text"
+      ],
+      "candidates": [
+        {
+          "id": "cand-example00001",
+          "kind": "address",
+          "value": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+          "role": "unknown",
+          "confidence": "high",
+          "line": 1,
+          "review": {
+            "decision": "pending"
+          }
+        }
+      ],
+      "purchase": {
+        "id": "example-receipt-000000",
+        "provider": "Example ATM — replace this record"
+      }
+    }
+  ]
+}

@@ -13,13 +13,14 @@ import (
 	"tracey-sof/internal/core"
 	"tracey-sof/internal/fixtures"
 	"tracey-sof/internal/input"
+	"tracey-sof/internal/intake"
 	"tracey-sof/internal/model"
 	"tracey-sof/internal/provenance"
 	reportfiles "tracey-sof/internal/report"
 	uiserver "tracey-sof/internal/server"
 )
 
-type paths struct{ dataDir, cacheDir, outDir, fixtures string }
+type paths struct{ dataDir, cacheDir, outDir, fixtures, inbox string }
 type application struct{ stdout, stderr io.Writer }
 
 const firstTransfer = "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16"
@@ -47,6 +48,104 @@ func (a application) validate(p paths) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, "owned, purchase, annotation, artifact, and trace-policy inputs are valid")
+	return nil
+}
+
+func (a application) intake(ctx context.Context, p paths, maxPages int) error {
+	scanner := intake.DefaultScanner()
+	scanner.MaxPages = maxPages
+	file, err := scanner.Scan(ctx, p.inbox, p.dataDir)
+	if err != nil {
+		return err
+	}
+	if len(file.Sources) == 0 {
+		return fmt.Errorf("no supported source files found in %s", p.inbox)
+	}
+	path := filepath.Join(p.dataDir, "purchase-intake.json")
+	if err := intake.Save(path, file); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "scanned %s -> %s\n", intake.Summary(file), path)
+	return nil
+}
+
+func (a application) resolveIntake(ctx context.Context, p paths) error {
+	file, err := intake.Load(filepath.Join(p.dataDir, "purchase-intake.json"))
+	if err != nil {
+		return fmt.Errorf("run intake first: %w", err)
+	}
+	client, err := rpcClient()
+	if err != nil {
+		return err
+	}
+	index := intake.NewTraceIndex(model.Trace{})
+	tracePath := filepath.Join(p.cacheDir, "trace.json")
+	if _, statErr := os.Stat(tracePath); statErr == nil {
+		trace, err := core.LoadTrace(tracePath)
+		if err != nil {
+			return err
+		}
+		index = intake.NewTraceIndex(trace)
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("stat trace cache: %w", statErr)
+	}
+	chain, err := intake.Resolve(ctx, client, &file, index)
+	if err != nil {
+		return err
+	}
+	if err := intake.Save(filepath.Join(p.dataDir, "purchase-intake.json"), file); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "resolved %s against current UTXOs at block %d %s\n", intake.Summary(file), chain.BestHeight, chain.BestBlock)
+	return nil
+}
+
+func (a application) reviewIntake(p paths, options intake.ReviewOptions, list bool) error {
+	path := filepath.Join(p.dataDir, "purchase-intake.json")
+	file, err := intake.Load(path)
+	if err != nil {
+		return fmt.Errorf("run intake first: %w", err)
+	}
+	if list {
+		for _, line := range intake.List(file) {
+			fmt.Fprintln(a.stdout, line)
+		}
+		fmt.Fprintln(a.stdout, intake.Summary(file))
+		return nil
+	}
+	if err := intake.ApplyReview(&file, options); err != nil {
+		return err
+	}
+	if err := intake.Save(path, file); err != nil {
+		return err
+	}
+	fmt.Fprintln(a.stdout, intake.Summary(file))
+	return nil
+}
+
+func (a application) promoteIntake(p paths, replace bool) error {
+	file, err := intake.Load(filepath.Join(p.dataDir, "purchase-intake.json"))
+	if err != nil {
+		return fmt.Errorf("run intake first: %w", err)
+	}
+	existing := model.PurchaseFile{SchemaVersion: model.SchemaVersion, Purchases: []model.Purchase{}}
+	purchasesPath := filepath.Join(p.dataDir, "purchases.json")
+	if _, statErr := os.Stat(purchasesPath); statErr == nil {
+		existing, err = input.LoadPurchases(purchasesPath, true)
+		if err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("stat purchases: %w", statErr)
+	}
+	promoted, err := intake.Promote(file, existing, p.dataDir, replace)
+	if err != nil {
+		return err
+	}
+	if err := input.SavePurchases(purchasesPath, promoted, true); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "promoted accepted intake candidates into %s (%d purchases)\n", purchasesPath, len(promoted.Purchases))
 	return nil
 }
 
@@ -340,6 +439,12 @@ func (a application) testNodeWith(ctx context.Context, p paths, deps testNodeDep
 		return err
 	}
 	source := deps.newSource(client)
+	firstTransferHeight := int64(0)
+	for _, fixture := range loaded {
+		if fixture.TxID == firstTransfer {
+			firstTransferHeight = fixture.BlockHeight
+		}
+	}
 	for _, fixture := range loaded {
 		if err := source.Prefetch(ctx, fixture.TxID, fixture.BlockHash, fixture.BlockHeight); err != nil {
 			return fmt.Errorf("verify %s: %w", fixture.TxID, err)
@@ -381,5 +486,17 @@ func (a application) testNodeWith(ctx context.Context, p paths, deps testNodeDep
 		return fmt.Errorf("real first-transfer policy cutoff did not produce a review-required incomplete trace")
 	}
 	fmt.Fprintln(a.stdout, "verified real policy cutoff produces a review-required boundary")
+	resolutions, resolvedChain, err := client.ResolveAddresses(ctx, []string{"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"})
+	if err != nil {
+		return err
+	}
+	if len(resolutions) != 1 || resolvedChain != tip {
+		return fmt.Errorf("real current-UTXO address resolution returned an inconsistent snapshot")
+	}
+	exists, height, note, err := client.ConfirmTransaction(ctx, firstTransfer)
+	if err != nil || !exists || height != firstTransferHeight {
+		return fmt.Errorf("real transaction resolution failed: exists=%v height=%d note=%q error=%v", exists, height, note, err)
+	}
+	fmt.Fprintln(a.stdout, "verified live address and transaction resolution")
 	return nil
 }

@@ -92,6 +92,99 @@ The most useful invoice-to-chain links are an exact purchase **txid** or receive
 
 Artifact paths are relative to `data/`, cannot escape that directory, and are checked byte-for-byte against SHA-256. Obtain an artifact hash locally, for example with `sha256sum data/evidence/receipt.pdf`. Artifact content is never uploaded or executed by the application.
 
+## Purchase intake
+
+Scanned receipts, address lists, and other purchase sources are staged in `data/inbox/` and extracted into `data/purchase-intake.json`. The intake file is **not** consumed by `make audit`; only explicitly promoted records enter `data/purchases.json`.
+
+```sh
+make intake INBOX=./data/inbox
+make resolve-intake
+make review-intake
+make promote-intake
+make audit
+```
+
+### Supported sources
+
+- PDF receipts with an embedded text layer through `pdftotext`.
+- Image-only PDFs or image files through `pdftoppm` and `tesseract`.
+- CSV/TSV files with columns such as `address`, `txid`, `outpoint`, and `role`.
+- TXT and JSON files through token extraction.
+
+OCR is optional. If the local binaries are absent, structured lists still work and the command reports which source needs OCR. Source files must remain below `data/`; each is hashed with SHA-256 and becomes the promoted purchase artifact.
+
+### Candidate roles
+
+Every extracted candidate starts as `role: "unknown"`. Promotion requires a human to assign one of:
+
+| Role | Meaning | Promotable |
+|---|---|---|
+| `received_at` | Address that received BTC on your behalf | Yes |
+| `purchase_txid` | Transaction that paid you | Yes |
+| `purchase_outpoint` | Exact output that paid you | Yes |
+| `paid_to` | Address you paid the ATM or counterparty | No |
+| `operator_address` | ATM/exchange operational address | No |
+| `unknown` | Not yet classified | No |
+
+A paid-to or operator address is never source-of-funds evidence. Do not use an ATM deposit address as a purchase boundary.
+
+### Review commands
+
+```sh
+sof review-intake -data-dir ./data -list
+sof review-intake -data-dir ./data --accept <candidate-id> --role received_at
+sof review-intake -data-dir ./data --reject <candidate-id> --note "operator deposit address"
+sof review-intake -data-dir ./data --accept <candidate-id> --role purchase_txid \
+  --purchase-id atm-2024-001 --date 2024-01-31T14:05:00Z --provider "ATM operator"
+```
+
+`make review-intake` lists candidates. Use the `sof` command directly for accept/reject and metadata edits. `make promote-intake` merges accepted candidates and refuses pending, rejected, unknown-role, paid-to, and operator-address candidates. It also refuses duplicate purchase IDs unless `--replace` is supplied.
+
+### Resolution
+
+`make resolve-intake` asks the node about **current** UTXOs only:
+
+- Addresses are batch-checked with `scantxoutset`.
+- Txids are confirmed with `getrawtransaction` when available.
+- Outpoints are checked with `gettxout`.
+- If `cache/trace.json` exists, candidates observed in the cached ancestry are marked `in_trace`.
+
+No historical spent-address scan is performed. An address with no current UTXO is not invalid and is not proof of anything. Historical `scanblocks`/`getdescriptoractivity` lookup remains deferred.
+
+### File shape
+
+The staging file records source path, SHA-256, media type, extraction methods, candidates, optional resolution data, review decisions, and editable purchase metadata. The schema is `schema/purchase-intake.schema.json`. Example shape:
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-11T00:00:00Z",
+  "sources": [
+    {
+      "id": "src-example00001",
+      "path": "inbox/example-receipt.txt",
+      "sha256": "64-lowercase-hex-characters",
+      "media_type": "text/plain",
+      "extraction": ["text"],
+      "candidates": [
+        {
+          "id": "cand-example00001",
+          "kind": "address",
+          "value": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+          "role": "unknown",
+          "confidence": "high",
+          "line": 1,
+          "review": {"decision": "pending"}
+        }
+      ],
+      "purchase": {"id": "example-receipt-000000"}
+    }
+  ]
+}
+```
+
+OCR never writes purchase dates or amounts automatically. Edit those fields during review; a misread digit must not become accounting evidence.
+
 ## `data/trace-policy.json`
 
 This optional file limits expensive or unproductive ancestry traversal:
@@ -154,6 +247,10 @@ A rejection excludes that candidate only at that target. It does not erase purch
 ```sh
 make node-check                  # connectivity and chain capabilities only
 make validate                    # local JSON and artifact checks
+make intake                      # extract purchase candidates from data/inbox
+make resolve-intake             # resolve candidates against current UTXOs
+make review-intake              # list staged candidates
+make promote-intake             # merge accepted candidates into purchases.json
 make discover                    # current UTXO set and target funding tx cache
 make trace                       # exact backward ancestry from cached targets
 make report                      # analysis and HTML/JSON/CSV/SVG/PDF without rediscovery

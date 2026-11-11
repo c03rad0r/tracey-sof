@@ -10,6 +10,7 @@ export TMPDIR := $(PROJECT)/.cache/tmp
 DATA_DIR ?= ./data
 OUT_DIR ?= ./out
 CACHE_DIR ?= ./cache
+INBOX ?= ./data/inbox
 SOF := ./bin/sof
 ENV_FILE ?= node.env
 
@@ -19,7 +20,7 @@ export BITCOIND_RPC_URL BITCOIND_COOKIE_FILE BITCOIND_RPC_USER BITCOIND_RPC_PASS
 export TRACE_MAX_DEPTH TRACE_MAX_TRANSACTIONS SOF_LISTEN CHROMIUM
 endif
 
-.PHONY: help setup init vendor build clean validate node-check discover trace report audit ui export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf
+.PHONY: help setup init vendor build clean validate node-check discover trace report audit ui export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake
 
 help: ## Show commands
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' Makefile
@@ -49,6 +50,18 @@ node-check: build ## Check Core connectivity and capabilities without changing t
 
 discover: build ## Discover current owned UTXOs from Core
 	$(SOF) discover -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR)
+
+intake: build ## Extract purchase candidates from receipts and address lists
+	$(SOF) intake -data-dir $(DATA_DIR) -inbox $(INBOX)
+
+resolve-intake: build ## Resolve intake candidates against current UTXOs
+	$(SOF) resolve-intake -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR)
+
+review-intake: build ## List staged intake candidates for review
+	$(SOF) review-intake -data-dir $(DATA_DIR) -list
+
+promote-intake: build ## Merge accepted intake candidates into purchases.json
+	$(SOF) promote-intake -data-dir $(DATA_DIR)
 
 trace: build ## Trace cached targets using exact transaction ancestry
 	$(SOF) trace -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR)
