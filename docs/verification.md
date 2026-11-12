@@ -41,12 +41,19 @@ On 2026-11-10, against the synchronized Bitcoin Core v31.1.0 node on `dq05`:
 - A real policy cutoff against the first-transfer fixture produced an incomplete trace with `review_required=true`, without fetching the parent beyond the cutoff.
 - A live address and transaction resolution check runs through the configured Core node; it uses only current-UTXO, raw-transaction, and outpoint lookups.
 - Intake tests cover PDF text extraction, image/PDF OCR fallbacks, CSV/TSV/TXT/JSON parsing, missing OCR binaries, malformed staging files, current-UTXO resolution, review decisions, promotion, artifact hashes, and every atomic-write failure stage.
+- Provisioning playbooks pass `ansible-playbook --syntax-check`; `scripts/core-check.sh` and `scripts/core-release.sh` pass `sh -n`.
+- The Core release helper was exercised with a temporary GPG key and fake release artifacts: missing keys, untrusted fingerprints, and checksum failures are refused, while a trusted signature writes a mode-0600 `.verified` marker.
+- Bitcoin Core 32.1 was independently downloaded and GPG-verified against official builder key `152812300785C96444D3334D17565732E08E5E41` (`achow101`). The verified tarball SHA-256 is `61545c17c3120fb7412f896d248b11993af04ec8817aad3649c55b2afb044963`. The staged client reports v32.1.0.
+- `make core-check` after the update reports the installed client as Bitcoin Core v32.1.0. The application-local RPC credentials have been generated but not yet activated in the node config.
+- The `BLOCKCHAIN` mount is active and `bitcoind` is running from `/opt/bitcoin-core/32.1`. The systemd restart result is successful. The unit is currently disabled and must be enabled if it should start at boot.
+- `shellcheck` passes for all provisioning scripts. The privacy scanner rejects an unknown external host and a known transaction-explorer host, and passes the current repository.
+- Make environment tests confirm that `BITCOIND_RPC_PASSWORD` reaches `node-check` but not `provision`.
 
 The smoke inputs, RPC credentials, reports, and caches used for this test are excluded from source control. They exercise public blockchain data, not private purchase evidence.
 
 ## Coverage interpretation
 
-`web/graph.js` is gated at 100% statement, branch, function, and line coverage with Node's built-in coverage runner. The current complete run has 100.00% statement coverage across all first-party Go packages (3131/3131 statements) after the purchase-intake addition, and the JavaScript graph utilities also pass 100% statement/branch/function/line gates. `make release-check` passed on 2026-11-11 against the live `dq05` node, including address and transaction resolution. Coverage is necessary but not sufficient: real mainnet and browser integration checks remain mandatory.
+`web/graph.js` is gated at 100% statement, branch, function, and line coverage with Node's built-in coverage runner. The current complete run has 100.00% statement coverage across all first-party Go packages (3131/3131 statements) after the purchase-intake addition, and the JavaScript graph utilities also pass 100% statement/branch/function/line gates. `make release-check` passed on 2026-11-11 and again on 2026-11-12 after provisioning remediation against the live `dq05` node, including address and transaction resolution. Coverage is necessary but not sufficient: real mainnet and browser integration checks remain mandatory.
 
 ## Limitations reviewers should check
 

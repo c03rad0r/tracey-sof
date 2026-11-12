@@ -1,0 +1,160 @@
+---
+- name: Require an explicit Bitcoin Core version
+  ansible.builtin.assert:
+    that:
+      - bitcoin_core_version | length > 0
+      - bitcoin_core_version is regex('^[0-9]+\.[0-9]+(\.[0-9]+)?$')
+      - bitcoin_core_arch | length > 0
+      - bitcoin_core_arch in ['x86_64-linux-gnu', 'aarch64-linux-gnu', 'arm-linux-gnueabihf', 'riscv64-linux-gnu', 'powerpc64le-linux-gnu']
+      - bitcoin_core_release_dir | length > 0
+    fail_msg: "Pass a valid bitcoin_core_version and a supported bitcoin_core_arch."
+
+- name: Require the configured datadir when supplied
+  ansible.builtin.stat:
+    path: "{{ bitcoin_core_datadir }}"
+  register: bitcoin_core_datadir_stat
+  when: bitcoin_core_datadir | length > 0
+
+- name: Refuse a missing datadir
+  ansible.builtin.assert:
+    that:
+      - bitcoin_core_datadir_stat.stat.isdir | default(false)
+    fail_msg: "bitcoin_core_datadir does not exist: {{ bitcoin_core_datadir }}"
+  when: bitcoin_core_datadir | length > 0
+
+- name: Require an active managed service and its mounts
+  ansible.builtin.shell: |
+    set -eu
+    systemctl is-active --quiet "{{ bitcoin_core_service_name }}.service"
+    for unit in $(systemctl show -p Requires --value "{{ bitcoin_core_service_name }}.service"); do
+      case "$unit" in
+        *.mount) systemctl is-active --quiet "$unit" ;;
+      esac
+    done
+  args:
+    executable: /bin/sh
+  changed_when: false
+  when:
+    - bitcoin_core_manage_service | bool
+    - bitcoin_core_require_active_service | bool
+
+- name: Define verified release paths
+  ansible.builtin.set_fact:
+    bitcoin_core_archive: "{{ bitcoin_core_release_dir }}/bitcoin-{{ bitcoin_core_version }}-{{ bitcoin_core_arch }}.tar.gz"
+    bitcoin_core_marker: "{{ bitcoin_core_release_dir }}/.verified"
+    bitcoin_core_version_dir: "{{ bitcoin_core_install_root }}/{{ bitcoin_core_version }}"
+    bitcoin_core_source_dir: "{{ bitcoin_core_local_release_dir if bitcoin_core_local_release_dir | length > 0 else bitcoin_core_release_dir }}"
+
+- name: Create the target release directory for remote installs
+  ansible.builtin.file:
+    path: "{{ bitcoin_core_release_dir }}"
+    state: directory
+    mode: "0700"
+  when: bitcoin_core_source_dir != bitcoin_core_release_dir
+
+- name: Copy locally verified release artifacts to the target
+  ansible.builtin.copy:
+    src: "{{ bitcoin_core_source_dir }}/{{ item }}"
+    dest: "{{ bitcoin_core_release_dir }}/{{ item }}"
+    mode: "0600"
+  loop:
+    - "bitcoin-{{ bitcoin_core_version }}-{{ bitcoin_core_arch }}.tar.gz"
+    - SHA256SUMS
+    - SHA256SUMS.asc
+    - .verified
+  when: bitcoin_core_source_dir != bitcoin_core_release_dir
+
+- name: Require a downloaded release archive
+  ansible.builtin.stat:
+    path: "{{ bitcoin_core_archive }}"
+  register: bitcoin_core_archive_stat
+
+- name: Require the release verification marker
+  ansible.builtin.stat:
+    path: "{{ bitcoin_core_marker }}"
+  register: bitcoin_core_marker_stat
+
+- name: Refuse unverified installations
+  ansible.builtin.assert:
+    that:
+      - bitcoin_core_archive_stat.stat.exists
+      - bitcoin_core_marker_stat.stat.exists
+    fail_msg: "Run make core-download and make core-verify before installing Bitcoin Core."
+
+- name: Read verified archive checksum
+  ansible.builtin.command:
+    argv:
+      - awk
+      - -F=
+      - $1=="sha256"{print $2}
+      - "{{ bitcoin_core_marker }}"
+  register: bitcoin_core_verified_hash
+  changed_when: false
+
+- name: Require a valid verified checksum
+  ansible.builtin.assert:
+    that:
+      - bitcoin_core_verified_hash.stdout is regex('^[0-9a-f]{64}$')
+    fail_msg: "The release verification marker does not contain a valid sha256 value."
+
+- name: Hash the downloaded archive
+  ansible.builtin.command:
+    argv:
+      - sha256sum
+      - "{{ bitcoin_core_archive }}"
+  register: bitcoin_core_archive_hash
+  changed_when: false
+
+- name: Refuse a changed archive
+  ansible.builtin.assert:
+    that:
+      - bitcoin_core_archive_hash.stdout.split()[0] == bitcoin_core_verified_hash.stdout
+    fail_msg: "The Bitcoin Core archive changed after verification; rerun make core-verify."
+
+- name: Check whether this version is already installed
+  ansible.builtin.stat:
+    path: "{{ bitcoin_core_version_dir }}/bin/bitcoind"
+  register: bitcoin_core_installed
+
+- name: Create the versioned installation directory
+  ansible.builtin.file:
+    path: "{{ bitcoin_core_version_dir }}"
+    state: directory
+    mode: "0755"
+  when: not bitcoin_core_installed.stat.exists
+
+- name: Extract the verified release
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -xzf
+      - "{{ bitcoin_core_archive }}"
+      - -C
+      - "{{ bitcoin_core_version_dir }}"
+      - --strip-components=1
+      - --no-same-owner
+    creates: "{{ bitcoin_core_version_dir }}/bin/bitcoind"
+
+- name: Link installed Bitcoin Core binaries
+  ansible.builtin.file:
+    src: "{{ bitcoin_core_version_dir }}/bin/{{ item }}"
+    dest: "{{ bitcoin_core_bin_dir }}/{{ item }}"
+    state: link
+    force: true
+  loop: "{{ bitcoin_core_binaries }}"
+  notify: Restart bitcoind
+
+- name: Verify the installed client version
+  ansible.builtin.command:
+    argv:
+      - "{{ bitcoin_core_bin_dir }}/bitcoin-cli"
+      - --version
+  register: bitcoin_core_client_version
+  changed_when: false
+
+- name: Report installed Bitcoin Core client
+  ansible.builtin.assert:
+    that:
+      - bitcoin_core_client_version.stdout is search('version v' + bitcoin_core_version)
+    fail_msg: "The installed bitcoin-cli did not report the requested version."
+    success_msg: "{{ bitcoin_core_client_version.stdout_lines[0] }}"

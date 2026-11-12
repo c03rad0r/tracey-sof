@@ -1,0 +1,21 @@
+---
+# Required for installation:
+bitcoin_core_version: ""
+bitcoin_core_arch: "x86_64-linux-gnu"
+bitcoin_core_release_dir: ""
+bitcoin_core_local_release_dir: ""
+bitcoin_core_install_root: "/opt/bitcoin-core"
+bitcoin_core_bin_dir: "/usr/local/bin"
+
+# Set to true only when a systemd unit already manages bitcoind.
+bitcoin_core_manage_service: false
+bitcoin_core_require_active_service: true
+bitcoin_core_service_name: "bitcoind"
+bitcoin_core_datadir: ""
+
+bitcoin_core_binaries:
+  - bitcoind
+  - bitcoin-cli
+  - bitcoin-tx
+  - bitcoin-util
+  - bitcoin-wallet

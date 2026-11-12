@@ -1,0 +1,22 @@
+---
+sof_deps_packages:
+  - build-essential
+  - ca-certificates
+  - curl
+  - git
+  - gnupg
+  - golang-go
+  - jq
+  - make
+  - nodejs
+  - poppler-utils
+  - python3
+  - tar
+  - tesseract-ocr
+  - tesseract-ocr-eng
+  - xz-utils
+
+sof_deps_install_chromium: true
+# Ubuntu's chromium-browser package is a transitional package that installs
+# the snap. Debian provides the regular chromium package.
+sof_chromium_package: "{{ 'chromium-browser' if ansible_distribution == 'Ubuntu' else 'chromium' }}"

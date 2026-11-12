@@ -1,6 +1,6 @@
 # Source-of-Funds UTXO Provenance Plan
 
-Last updated: 2026-11-11
+Last updated: 2026-11-12
 
 This file is the implementation plan and living checklist for this project. Update it whenever scope, architecture, commands, or completion status changes. A checked item means both its implementation and relevant verification are complete.
 
@@ -27,6 +27,7 @@ This file is the implementation plan and living checklist for this project. Upda
 9. **Trace policy boundaries:** optional JSON policies may cap hops/transactions, stop at a large ancestor output, stop at large input/output counts, or stop before a block height. These boundaries are auditable safety/review controls, never purchase evidence. A heuristic stop leaves the target incomplete and review-required. The large-value rule applies to an ancestor output being traversed, not to the current target's total value.
 10. **Unmatched evidence diagnostics:** reports list supplied purchase transaction IDs, outpoints, and addresses that were not encountered, so missing matches can be investigated without mistaking them for proof.
 11. **Purchase intake:** scanned receipts and address lists are extracted into a staging file, never directly into `purchases.json`. Candidate roles distinguish received-at addresses and purchase txids/outpoints from paid-to and operator addresses. OCR output is untrusted, local, and optional; promotion requires explicit human review. Resolution uses only the current UTXO set; historical spent-address discovery remains deferred.
+12. **Provisioning:** optional Ansible roles install local build/runtime dependencies and versioned Bitcoin Core releases. Core installation is explicit, versioned, and refuses to proceed without GPG-verified release checksums and SHA-256 verification. The roles never overwrite `bitcoin.conf`, a data directory, or wallet data. `make provision` is limited to dependencies; Core updates use separate verification and installation targets.
 
 ## Planned files and commands
 
@@ -35,6 +36,8 @@ This file is the implementation plan and living checklist for this project. Upda
 - `data/annotations.json`: labels, notes, and manual review decisions, written atomically by the UI.
 - `data/trace-policy.json`: optional auditable limits for hops, transaction count, large ancestor values, fan-in/fan-out, and block-height cutoff.
 - `data/purchase-intake.json`: staged receipt/address candidates and source hashes; never consumed by audit until promoted.
+- `ansible/`: optional host provisioning roles and inventory examples.
+- `scripts/`: local release verification and Core health-check helpers.
 - `schema/`: versioned JSON Schemas.
 - `examples/`: sanitized inputs and an offline mainnet-fixture report.
 - `internal/core`: read-only RPC, chain capability checks, and cache.
@@ -64,6 +67,16 @@ make resolve-intake
 make review-intake
 make promote-intake
 make audit
+```
+
+Optional host provisioning and Core update workflow:
+
+```sh
+make ansible-check
+make provision
+make core-download CORE_VERSION=...
+make core-verify CORE_VERSION=... CORE_KEYS_FILE=... CORE_TRUSTED_FINGERPRINTS=...
+make core-install CORE_VERSION=... CORE_KEYS_FILE=... CORE_TRUSTED_FINGERPRINTS=...
 ```
 
 Quality workflow:
@@ -136,7 +149,33 @@ make release-check
 - [x] **P7.9** Test extraction, tokenization, CSV parsing, command failures, resolution, review, promotion, malformed staging files, path confinement, and atomic writes. **Verified with 100% Go statement coverage across all first-party packages.**
 - [x] **P7.10** Rerun `make verify`, `make release-check`, and live-node address/txid resolution before publication. **`make release-check` passed on the finished `tracey-sof/0.3.0` tree; live `dq05` verified current-UTXO address resolution and transaction resolution.**
 
-### 8. Explicitly deferred
+### 8. Provisioning and Bitcoin Core updates
+
+- [x] **P8.1** Add an Ansible inventory example and playbooks for dependency provisioning and Bitcoin Core installation.
+- [x] **P8.2** Add an idempotent `sof_deps` role for Go, Node, Chromium, Poppler, Tesseract, build tools, and release-verification utilities on Ubuntu/Debian.
+- [x] **P8.3** Add a versioned `bitcoin_core` role that installs under `/opt/bitcoin-core/<version>`, updates `/usr/local/bin` symlinks, preserves configuration/data, and optionally restarts systemd.
+- [x] **P8.4** Require a locally downloaded, GPG-verified `SHA256SUMS` and matching tarball checksum before Core installation; reject unverified or changed archives.
+- [x] **P8.5** Add `make provision`, `make ansible-check`, `make core-check`, `make core-download`, `make core-verify`, `make core-install`, and `make core-update`.
+- [x] **P8.6** Document builder-key fingerprint verification, signed checksum verification, tarball checksum verification, backup/rollback, service restart, and post-upgrade checks in `docs/provisioning.md`.
+- [x] **P8.7** Test Ansible syntax, shell syntax, verification failure paths, Core installation refusal, and the read-only `make core-check` path. **Ansible syntax, shell syntax, release-helper refusal/success, and `core-check` were exercised. The role's missing-marker refusal is ordered before any install task; the privileged install itself was not executed during development.**
+- [x] **P8.8** Record the current Core 28 observation and the requirement to reach Core 29+ before relying on the documented target. **Recorded in `docs/provisioning.md` and `docs/verification.md`.**
+
+### 9. Provisioning audit remediation
+
+- [x] **R1** Scope `BITCOIND_*` credential exports to RPC-only Make targets so provisioning, OCR, Chromium, and release-download recipes do not inherit RPC credentials.
+- [x] **R2** Validate `CORE_VERSION` and `CORE_ARCH`, and restrict Core downloads to HTTPS with a minimum TLS version and redirect policy.
+- [x] **R3** Add a Core preflight target and managed-service preflight in the Ansible role that refuses missing datadirs, inactive services, and inactive required mount units.
+- [x] **R4** Replace the narrow privacy grep with a repository-wide external-host allowlist scan covering `Makefile`, `ansible/`, `scripts/`, and application sources.
+- [x] **R5** Clarify that a fingerprint list is not a builder-key file; keep local fingerprint notes ignored and require official `.gpg` keys for verification.
+- [x] **R6** Run shell syntax checks, ShellCheck, Ansible syntax check, `make verify`, GPG refusal/success tests, and the privacy scan after remediation. **All passed; `make release-check` also passed against `dq05` after credential scoping. The privacy scanner rejects unknown and banned external hosts.**
+- [x] **R7** Update provisioning and verification documentation with credential scoping, preflight checks, and the current blocked host state.
+- [x] **R8** Repair the host blockchain mount, datadir configuration, and systemd dependency before any Core update. **The `BLOCKCHAIN` mount is active and `bitcoind` is running again. The current user still cannot access the service datadir/cookie, and the app-local `node.env` is not configured.**
+- [x] **R9** Run the privileged Core 32.1 install/update from a sudo-capable terminal and verify the post-upgrade version. **Completed: `bitcoind` is active from `/opt/bitcoin-core/32.1`, `bitcoin-cli` reports v32.1.0, and the verified install marker is present.**
+- [x] **R10** Generate a dedicated local RPC user and mode-600 `node.env`; keep the password out of command output and Git. **Created `node.env` and `cache/local-rpcauth.conf` with user `tracey-sof`.**
+- [ ] **R11** Append the generated `rpcauth` line to the node's `bitcoin.conf`, enable `bitcoind` for reboot, and restart it. **Requires sudo access to the `admin` datadir.**
+- [ ] **R12** Verify chain/index synchronization and run `make node-check` with the new local RPC credentials.
+
+### 10. Explicitly deferred
 
 - [ ] Historical spent-address discovery when no current UTXO is supplied.
 - [ ] Self-hosted Esplora adapter.

@@ -1,0 +1,8 @@
+---
+- name: Install a verified Bitcoin Core release
+  hosts: sof
+  become: true
+  roles:
+    - role: bitcoin_core
+      tags:
+        - core
