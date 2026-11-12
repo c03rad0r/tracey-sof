@@ -47,7 +47,7 @@ make audit
 
 The service listens on `127.0.0.1` by default. Never expose the annotation server or Bitcoin RPC directly to the public internet. Xpubs, addresses, purchase records, and their combined transaction graph are sensitive financial information. See [`docs/inputs.md`](docs/inputs.md) for complete JSON examples and [`docs/bitcoin-core.md`](docs/bitcoin-core.md) for node configuration.
 
-Outputs are written below `out/`. `make example` runs without a node or private data. `make help` lists all supported commands.
+Outputs are written below `out/`. `make example` runs without a node or private data. `make help` lists all supported commands. For the manual Core 32.1/RPC/input/unmount setup and readiness checklist, see [`HANDOVER.md`](HANDOVER.md).
 
 `make report` and `make export` reuse the cached ancestry for label/note edits. After editing purchase records, `purchase_links`, `data/trace-policy.json`, or promoted intake evidence, always rerun `make audit` so evidence and policy boundaries are recomputed.
 
