@@ -1,0 +1,8 @@
+---
+- name: Provision tracey-sof host dependencies
+  hosts: sof
+  become: true
+  roles:
+    - role: sof_deps
+      tags:
+        - deps

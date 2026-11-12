@@ -37,6 +37,9 @@ BITCOIND_COOKIE_FILE=/path/to/your/.bitcoin/.cookie
 Static `BITCOIND_RPC_USER` and `BITCOIND_RPC_PASSWORD` environment variables are also accepted, but must be supplied together and must not be placed in tracked files. URLs with embedded credentials are rejected.
 
 - `make node-check` prints capabilities and warnings without scanning owned scripts. `make audit` refuses an unsynchronized chain and requires a stable chain tip across discovery and tracing.
+- `make provision` installs local build/runtime dependencies through Ansible. It does not install or update Bitcoin Core.
+- `make core-preflight` checks a configured datadir and required systemd mounts before an update.
+- `make core-check`, `make core-download`, `make core-verify`, `make core-install`, and `make core-update` support versioned, signature-verified Core installation. See [`provisioning.md`](provisioning.md).
 - `make resolve-intake` uses `scantxoutset`, `getrawtransaction`, and `gettxout` to resolve purchase candidates. It never imports a wallet and never scans historical spends.
 - `data/trace-policy.json` is optional. When present, it replaces legacy `TRACE_MAX_DEPTH`/`TRACE_MAX_TRANSACTIONS` overrides for the policy-controlled trace limits.
 

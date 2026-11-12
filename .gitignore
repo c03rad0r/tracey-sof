@@ -15,6 +15,14 @@
 node.env
 *.cookie
 
+# Optional Ansible inventory with host-specific connection details
+/ansible/inventory.ini
+*.retry
+
+# Local builder-key fingerprint notes; public keys belong in a .gpg directory
+/trusted-keys
+/trusted-keys~
+
 # Editors and operating systems
 .DS_Store
 *.swp

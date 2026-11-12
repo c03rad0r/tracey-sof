@@ -1,0 +1,90 @@
+---
+- name: Require a Debian-family target
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+    fail_msg: "This role currently supports Ubuntu and Debian only."
+
+- name: Install base build and runtime packages
+  ansible.builtin.apt:
+    name: "{{ sof_deps_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Chromium for PDF and browser verification
+  ansible.builtin.apt:
+    name: "{{ sof_chromium_package }}"
+    state: present
+  when: sof_deps_install_chromium | bool
+
+- name: Read Go version
+  ansible.builtin.command:
+    argv:
+      - go
+      - version
+  register: sof_go_version
+  changed_when: false
+
+- name: Require Go 1.25 or newer
+  ansible.builtin.assert:
+    that:
+      - sof_go_version.stdout is regex('go1\.(2[5-9]|[3-9][0-9])')
+    fail_msg: "Go 1.25+ is required; install a newer Go toolchain and rerun make provision."
+    success_msg: "{{ sof_go_version.stdout }}"
+
+- name: Read Node.js version
+  ansible.builtin.command:
+    argv:
+      - node
+      - --version
+  register: sof_node_version
+  changed_when: false
+
+- name: Require Node.js 20 or newer
+  ansible.builtin.assert:
+    that:
+      - sof_node_version.stdout is regex('^v(2[0-9]|[3-9][0-9])\.')
+    fail_msg: "Node.js 20+ is required; install a newer Node.js and rerun make provision."
+    success_msg: "{{ sof_node_version.stdout }}"
+
+- name: Locate Chromium
+  ansible.builtin.shell:
+    cmd: command -v chromium || command -v chromium-browser || command -v google-chrome
+  register: sof_chromium_path
+  changed_when: false
+  when: sof_deps_install_chromium | bool
+
+- name: Report Chromium path
+  ansible.builtin.assert:
+    that:
+      - sof_chromium_path.rc == 0
+      - sof_chromium_path.stdout | length > 0
+    fail_msg: "Chromium was not found after installation."
+    success_msg: "Chromium: {{ sof_chromium_path.stdout }}"
+  when: sof_deps_install_chromium | bool
+
+- name: Check PDF text extraction tooling
+  ansible.builtin.command:
+    argv:
+      - pdftotext
+      - -v
+  register: sof_pdftotext
+  changed_when: false
+  failed_when: sof_pdftotext.rc != 0
+
+- name: Check OCR tooling
+  ansible.builtin.command:
+    argv:
+      - tesseract
+      - --version
+  register: sof_tesseract
+  changed_when: false
+  failed_when: sof_tesseract.rc != 0
+
+- name: Report installed dependency versions
+  ansible.builtin.debug:
+    msg:
+      - "{{ sof_go_version.stdout }}"
+      - "Node {{ sof_node_version.stdout }}"
+      - "PDF and OCR tools installed"

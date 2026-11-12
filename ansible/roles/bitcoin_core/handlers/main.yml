@@ -1,0 +1,6 @@
+---
+- name: Restart bitcoind
+  ansible.builtin.systemd:
+    name: "{{ bitcoin_core_service_name }}"
+    state: restarted
+  when: bitcoin_core_manage_service | bool
