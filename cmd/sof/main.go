@@ -62,12 +62,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return app.trace(ctx, *p)
 	case "report":
 		fs, p := common("report")
+		unredacted := fs.Bool("unredacted", true, "print identifiers and amounts (default); set false to redact")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return app.report(ctx, *p, false, true)
+		return app.report(ctx, *p, false, true, *unredacted)
 	case "audit":
 		fs, p := common("audit")
+		unredacted := fs.Bool("unredacted", true, "print identifiers and amounts (default); set false to redact")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -80,13 +82,19 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err := app.trace(ctx, *p); err != nil {
 			return err
 		}
-		return app.report(ctx, *p, false, true)
+		return app.report(ctx, *p, false, true, *unredacted)
 	case "ui":
 		fs, p := common("ui")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		return app.ui(ctx, *p)
+	case "graphs":
+		fs, p := common("graphs")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.graphs(ctx, *p)
 	case "export":
 		fs, p := common("export")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -96,7 +104,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := app.report(ctx, *p, false, true); err != nil {
+		if err := app.report(ctx, *p, false, true, true); err != nil {
 			return err
 		}
 		return app.export(*p, purchases)
@@ -114,7 +122,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return app.testNode(ctx, *p)
 	case "pdf":
 		fs, p := common("pdf")
-		unredacted := fs.Bool("unredacted", false, "print identifiers and amounts instead of redacted placeholders")
+		unredacted := fs.Bool("unredacted", true, "print identifiers and amounts (default); set false to redact")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}

@@ -95,9 +95,18 @@ func TestCLINodeDiscoverTraceReportAndExport(t *testing.T) {
 		t.Fatalf("report output = %q", reportOutput)
 	}
 	assertCLIPDF(t, filepath.Join(p.outDir, "report.pdf"))
+	graphOutput := invoke(cliCommandArguments("graphs", p))
+	for _, expected := range []string{"graph-all.svg", filepath.Join(p.outDir, "graph-")} {
+		if !strings.Contains(graphOutput, expected) {
+			t.Fatalf("graphs output = %q", graphOutput)
+		}
+	}
+	if matches, err := filepath.Glob(filepath.Join(p.outDir, "graph-*.svg")); err != nil || len(matches) < 2 {
+		t.Fatalf("graph-*.svg = %v, %v", matches, err)
+	}
 	structuredOnly := application{stdout: &stdout, stderr: &stderr}
 	stdout.Reset()
-	if err := structuredOnly.report(ctx, p, false, false); err != nil {
+	if err := structuredOnly.report(ctx, p, false, false, false); err != nil {
 		t.Fatalf("structured-only report generation: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "wrote report for 1 UTXOs") {

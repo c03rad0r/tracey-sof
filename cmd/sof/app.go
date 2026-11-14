@@ -328,7 +328,22 @@ func (a application) pdf(ctx context.Context, p paths, unredacted bool) error {
 	return nil
 }
 
-func (a application) report(ctx context.Context, p paths, server, includePDF bool) error {
+func (a application) graphs(_ context.Context, p paths) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	written, err := reportfiles.WriteGraphs(report, p.outDir)
+	if err != nil {
+		return err
+	}
+	for _, path := range written {
+		fmt.Fprintf(a.stdout, "wrote %s\n", path)
+	}
+	return nil
+}
+
+func (a application) report(ctx context.Context, p paths, server, includePDF, unredacted bool) error {
 	report, err := a.buildReport(p)
 	if err != nil {
 		return err
@@ -338,7 +353,7 @@ func (a application) report(ctx context.Context, p paths, server, includePDF boo
 	}
 	fmt.Fprintf(a.stdout, "wrote report for %d UTXOs to %s\n", len(report.UTXOs), p.outDir)
 	if includePDF {
-		return a.pdf(ctx, p, false)
+		return a.pdf(ctx, p, unredacted)
 	}
 	return nil
 }
@@ -418,7 +433,7 @@ func (a application) exampleWith(ctx context.Context, p paths, deps exampleDepen
 	if err := reportfiles.WriteStructured(report, p.outDir, false); err != nil {
 		return err
 	}
-	return a.pdf(ctx, p, false)
+	return a.pdf(ctx, p, true)
 }
 
 func (a application) testNode(ctx context.Context, p paths) error {

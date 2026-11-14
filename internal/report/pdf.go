@@ -53,7 +53,9 @@ func PDFWithOptions(ctx context.Context, outDir, browser string, options PDFOpti
 	pdfPath := filepath.Join(outDir, "report.pdf")
 	htmlLocation := &url.URL{Scheme: "file", Path: filepath.Join(outDir, "report.html")}
 	if options.Unredacted {
-		htmlLocation.RawQuery = "redact=0"
+		htmlLocation.RawQuery = ""
+	} else {
+		htmlLocation.RawQuery = "redact=1"
 	}
 	htmlURL := htmlLocation.String()
 	args := []string{"--headless", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--no-first-run", "--no-default-browser-check", "--no-pdf-header-footer", "--user-data-dir=" + profile, "--print-to-pdf=" + pdfPath, htmlURL}

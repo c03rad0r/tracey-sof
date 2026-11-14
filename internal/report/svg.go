@@ -205,6 +205,10 @@ func SVGBytes(report model.Report) ([]byte, error) {
 		position[node.node.ID] = node
 	}
 	annotations := newSVGAnnotations(report.Annotations)
+	purchases := map[string]model.Purchase{}
+	for _, purchase := range report.Purchases {
+		purchases[purchase.ID] = purchase
+	}
 	var out strings.Builder
 	fmt.Fprintf(&out, `<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" role="img" aria-labelledby="title desc">`, width, height, width, height)
 	out.WriteString(`<title id="title">Source-of-funds transaction graph</title><desc id="desc">Exact transaction ancestry from current owned UTXOs on the right to older transactions on the left. Purchase boundaries are evidence supplied by the user. Amounts show BTC and, when the wallet supplied it, the fiat value at transaction time.</desc>`)
@@ -259,17 +263,38 @@ func SVGBytes(report model.Report) ([]byte, error) {
 		if identifier != "" {
 			fmt.Fprintf(&out, `<text class="tiny" x="%d" y="%d">%s</text>`, placed.x-140, placed.y+2, html.EscapeString(shortID(identifier)))
 		}
-		fmt.Fprintf(&out, `<text class="amount" x="%d" y="%d">%s · %d sats</text>`, placed.x-140, placed.y+22, btcString(n.ValueSats), n.ValueSats)
+		amount := n.ValueSats
+		var purchase *model.Purchase
+		for _, id := range n.PurchaseIDs {
+			if candidate, ok := purchases[id]; ok {
+				purchase = &candidate
+				break
+			}
+		}
+		if purchase != nil && purchase.AmountSats != nil && (n.Kind == "transaction" || n.ValueSats == 0) {
+			amount = *purchase.AmountSats
+		}
+		if n.Kind != "transaction" || purchase != nil {
+			fmt.Fprintf(&out, `<text class="amount" x="%d" y="%d">%s · %d sats</text>`, placed.x-140, placed.y+22, btcString(amount), amount)
+		}
 		if fiat := fiatString(annotation.Fiat); fiat != "" {
 			when := ""
 			if len(annotation.Time) >= 10 {
 				when = " · " + annotation.Time[:10]
 			}
 			fmt.Fprintf(&out, `<text class="tiny" x="%d" y="%d">%s%s (wallet-recorded)</text>`, placed.x-140, placed.y+40, html.EscapeString(fiat), html.EscapeString(when))
+		} else if purchase != nil {
+			fmt.Fprintf(&out, `<text class="tiny" x="%d" y="%d">%s purchase</text>`, placed.x-140, placed.y+40, html.EscapeString(purchase.Provider))
 		} else if rate := fiatString(annotation.Rate); rate != "" {
 			fmt.Fprintf(&out, `<text class="tiny" x="%d" y="%d">rate %s/BTC (wallet-recorded)</text>`, placed.x-140, placed.y+40, html.EscapeString(rate))
 		}
-		fmt.Fprintf(&out, `<text class="tiny" x="%d" y="%d">depth %d</text></g>`, placed.x-140, placed.y+56, placed.depth)
+		stamp := ""
+		if len(n.BlockTime) >= 10 {
+			stamp = n.BlockTime[:10] + " · "
+		} else if purchase != nil && len(purchase.Date) >= 10 {
+			stamp = purchase.Date[:10] + " · "
+		}
+		fmt.Fprintf(&out, `<text class="tiny" x="%d" y="%d">%sdepth %d</text></g>`, placed.x-140, placed.y+56, html.EscapeString(stamp), placed.depth)
 	}
 	out.WriteString(`</svg>`)
 	return []byte(out.String()), nil

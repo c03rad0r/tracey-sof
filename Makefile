@@ -13,7 +13,9 @@ CACHE_DIR ?= ./cache
 INBOX ?= ./data/inbox
 SOF := ./bin/sof
 ENV_FILE ?= node.env
-UNREDACTED ?= 0
+# Identifiers are visible by default for review. Set UNREDACTED=0 before
+# generating a shareable copy.
+UNREDACTED ?= 1
 ANSIBLE_INVENTORY ?= ansible/inventory.example.ini
 ANSIBLE_ARGS ?=
 ANSIBLE_CONFIG := $(PROJECT)/ansible/ansible.cfg
@@ -44,7 +46,7 @@ $(RPC_TARGETS): export BITCOIND_COOKIE_FILE := $(BITCOIND_COOKIE_FILE)
 $(RPC_TARGETS): export BITCOIND_RPC_USER := $(BITCOIND_RPC_USER)
 $(RPC_TARGETS): export BITCOIND_RPC_PASSWORD := $(BITCOIND_RPC_PASSWORD)
 
-.PHONY: help setup init vendor build clean validate labels-import node-check discover trace report audit ui export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
+.PHONY: help setup init vendor build clean validate labels-import node-check discover trace report audit ui graphs export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
 
 help: ## Show commands
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' Makefile
@@ -132,13 +134,16 @@ trace: build ## Trace cached targets using exact transaction ancestry
 	$(SOF) trace -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR)
 
 report: build ## Regenerate reports from local trace data without chain access
-	$(SOF) report -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+	$(SOF) report -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -unredacted=$(UNREDACTED)
 
 audit: build ## Validate, discover, trace, and generate all reports
-	$(SOF) audit -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+	$(SOF) audit -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -unredacted=$(UNREDACTED)
 
 ui: build ## Serve reports and local annotations on loopback
 	$(SOF) ui -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+
+graphs: build ## Write graph-all.svg and one focused SVG per current UTXO
+	$(SOF) graphs -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
 
 export: build ## Create accountant bundle and SHA-256 manifest
 	$(SOF) export -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)

@@ -255,6 +255,8 @@ type GraphNode struct {
 	TerminalReason string   `json:"terminal_reason,omitempty"`
 	TerminalDetail string   `json:"terminal_detail,omitempty"`
 	ReviewRequired bool     `json:"review_required,omitempty"`
+	BlockTime      string   `json:"block_time,omitempty"`
+	Height         int64    `json:"height,omitempty"`
 }
 
 type GraphEdge struct {

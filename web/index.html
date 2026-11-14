@@ -18,7 +18,7 @@
       <p class="subtitle">Exact transaction ancestry, presented separately from user-supplied purchase evidence and labels.</p>
     </div>
     <div class="header-actions" aria-label="Report controls">
-      <button id="privacy-toggle" type="button" aria-pressed="true">Redaction: on</button>
+      <button id="privacy-toggle" type="button" aria-pressed="false">Redaction: off</button>
       <button id="download-svg" type="button">Download SVG</button>
       <button id="print-report" type="button">Print / Save PDF</button>
     </div>
@@ -114,7 +114,7 @@
         <div class="table-scroll">
           <table>
             <caption>Graph nodes after current UTXO filters</caption>
-            <thead><tr><th scope="col">Kind</th><th scope="col">Outpoint / txid</th><th scope="col">Address</th><th scope="col">Amount (BTC)</th><th scope="col">USD at time</th><th scope="col">User label</th><th scope="col">Purchase evidence</th></tr></thead>
+            <thead><tr><th scope="col">Kind</th><th scope="col">Date</th><th scope="col">Outpoint / txid</th><th scope="col">Address</th><th scope="col">Amount (BTC)</th><th scope="col">USD at time</th><th scope="col">User label</th><th scope="col">Purchase evidence</th></tr></thead>
             <tbody id="graph-table-body"></tbody>
           </table>
         </div>

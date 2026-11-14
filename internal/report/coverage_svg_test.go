@@ -105,17 +105,24 @@ func TestCoverageSVGCompleteLayoutStaticAndDeterministic(t *testing.T) {
 }
 
 func TestCoverageSVGWalletLabelsAndFiat(t *testing.T) {
+	purchaseAmount := int64(670344)
 	report := model.Report{
 		Graph: model.Graph{
 			Nodes: []model.GraphNode{
 				{ID: "out-current", Kind: "output", Outpoint: "aaaa:0", Address: "bc1qowned", ValueSats: 780, Owned: true},
-				{ID: "tx-rate", Kind: "transaction", TxID: "feed"},
+				{ID: "tx-rate", Kind: "transaction", TxID: "feed", BlockTime: "2026-08-03T21:57:31Z", Height: 960919},
 				{ID: "out-eur", Kind: "output", Outpoint: "bbbb:1", Address: "bc1qeur", ValueSats: -150},
 				{ID: "out-fallback", Kind: "output", Outpoint: "cccc:2", Address: "bc1qthird", ValueSats: 5},
 				{ID: "terminal", Kind: "terminal", TerminalReason: "policy_output_count"},
 				{ID: "bare", Kind: "output"},
+				{ID: "out-purchase", Kind: "output", Outpoint: "dddd:3", PurchaseIDs: []string{"purchase-1"}},
+				{ID: "out-purchase-nil", Kind: "output", Outpoint: "eeee:4", ValueSats: 5, PurchaseIDs: []string{"purchase-2"}},
 			},
 			Edges: []model.GraphEdge{{From: "out-current", To: "tx-rate", Kind: "funded_by", ValueSats: 780}},
+		},
+		Purchases: []model.Purchase{
+			{ID: "purchase-1", Date: "2024-02-01T20:32:24Z", Provider: "Example Exchange", AmountSats: &purchaseAmount},
+			{ID: "purchase-2", Date: "2024-01-01T00:00:00Z", Provider: "Example Exchange"},
 		},
 		Annotations: model.AnnotationFile{
 			Transactions: map[string]model.Annotation{"feed": {Label: "wallet tx", Rate: map[string]string{"USD": "63504.42"}}},
@@ -139,6 +146,10 @@ func TestCoverageSVGWalletLabelsAndFiat(t *testing.T) {
 		"0.50 EUR (wallet-recorded)",
 		"rate $63504.42 USD/BTC (wallet-recorded)",
 		"policy_output_count",
+		"2026-08-03 · depth",
+		"0.00670344 BTC · 670344 sats",
+		"2024-02-01 · depth",
+		"Example Exchange purchase",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("annotated SVG missing %q", want)

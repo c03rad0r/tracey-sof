@@ -70,7 +70,7 @@
   const allPurchases = asArray(report.purchases);
   const query = typeof window === "object" && window.location ? new URLSearchParams(window.location.search) : null;
   const state = {
-    redacted: !(query && query.get("redact") === "0"),
+    redacted: Boolean(query && query.get("redact") === "1"),
     status: "all",
     purchaseId: "all",
     zoom: 1,
@@ -113,6 +113,17 @@
     if (isRecord(utxo) && text(utxo.outpoint)) {
       utxoByOutpoint.set(text(utxo.outpoint), utxo);
     }
+  }
+
+  const purchaseById = new Map();
+  for (const purchase of allPurchases) {
+    if (isRecord(purchase) && text(purchase.id)) {
+      purchaseById.set(text(purchase.id), purchase);
+    }
+  }
+
+  function dateLabel(value) {
+    return typeof value === "string" && value.length >= 10 ? value.slice(0, 10) : "";
   }
 
   function rawAnnotation(kind, identifier) {
@@ -171,6 +182,12 @@
   function nodeTitle(node) {
     const annotation = nodeAnnotation(node);
     const parts = [node.kind, annotation.label, node.txid, node.outpoint, node.address];
+    if (node.block_time) {
+      parts.push(node.block_time);
+    }
+    if (Number.isSafeInteger(node.height) && node.height > 0) {
+      parts.push("block " + node.height);
+    }
     if (Number.isSafeInteger(node.value_sats)) {
       parts.push(api.formatBtc(node.value_sats), api.formatSats(node.value_sats));
     }
@@ -183,6 +200,18 @@
     }
     if (annotation.keypath) {
       parts.push("keypath " + annotation.keypath);
+    }
+    for (const identifier of api.uniqueStrings(node.purchase_ids)) {
+      const purchase = purchaseById.get(identifier);
+      if (purchase) {
+        parts.push("purchase " + text(purchase.id) + " " + text(purchase.provider));
+      }
+    }
+    if (node.terminal_reason) {
+      parts.push("boundary " + node.terminal_reason);
+    }
+    if (node.terminal_detail) {
+      parts.push(node.terminal_detail);
     }
     if (annotation.note) {
       parts.push("note " + annotation.note);
@@ -582,23 +611,38 @@
     }));
     svgText(group, "node-kicker", 12, 18, kicker);
     svgText(group, "node-heading", 12, 38, heading);
+    const purchases = api.uniqueStrings(node.purchase_ids);
+    const purchase = purchases.length > 0 ? purchaseById.get(purchases[0]) : null;
+    const blockHeight = Number.isSafeInteger(node.height) ? node.height : annotation.height;
+    const nodeDate = annotationDate(annotation) || dateLabel(node.block_time) || (purchase ? dateLabel(purchase.date) : "");
     let primary = "";
     let secondary = "";
     if (kind === "transaction") {
       primary = secret(text(node.txid) || text(node.id));
-      secondary = [annotation.height ? "block " + formatCount(annotation.height) : "", rate ? "rate " + rate + "/BTC" : ""]
-        .filter(function (part) { return part; }).join(" · ");
+      secondary = [
+        Number.isSafeInteger(blockHeight) && blockHeight > 0 ? "block " + formatCount(blockHeight) : "",
+        nodeDate
+      ].filter(function (part) { return part; }).join(" · ");
     } else {
-      primary = secret(text(node.address)) || secret(text(node.outpoint)) || secret(text(node.id));
-      secondary = text(node.outpoint) && primary !== secret(text(node.outpoint)) ? secret(text(node.outpoint)) : "";
+      const primaryValue = text(node.address) || text(node.outpoint) || text(node.id);
+      primary = secret(primaryValue);
+      secondary = text(node.outpoint) && primaryValue !== text(node.outpoint) ? secret(text(node.outpoint)) : "";
     }
     let amountLine = "";
     if (Number.isSafeInteger(node.value_sats)) {
       amountLine = formatBtcAmount(node.value_sats) + " · " + formatSats(node.value_sats);
+    } else if (purchase && Number.isSafeInteger(purchase.amount_sats)) {
+      amountLine = formatBtcAmount(purchase.amount_sats) + " · " + formatSats(purchase.amount_sats);
     }
     let fiatLine = "";
     if (fiat) {
-      fiatLine = (state.redacted ? fiat : fiat + (date ? " on " + date : "")) + " (wallet-recorded)";
+      fiatLine = (state.redacted ? fiat : fiat + (nodeDate ? " on " + nodeDate : "")) + " (wallet-recorded)";
+    } else if (purchase && isRecord(purchase.fiat)) {
+      fiatLine = formatFiat(purchase.fiat) + " purchase" + (nodeDate ? " · " + nodeDate : "");
+    } else if (rate) {
+      fiatLine = "rate " + rate + "/BTC (wallet-recorded)";
+    } else if (nodeDate) {
+      fiatLine = nodeDate + (purchase ? " · matched purchase" : "");
     }
     let ownerLine = "";
     const utxo = utxoByOutpoint.get(text(node.outpoint));
@@ -610,14 +654,17 @@
         ownerLine = "[redacted owner]";
       }
     }
-    const purchases = api.uniqueStrings(node.purchase_ids);
     let evidenceLine = "No user annotation · no purchase evidence";
     if (state.redacted && (annotation.label || annotation.note)) {
       evidenceLine = "Redacted user annotation";
+    } else if (purchase) {
+      evidenceLine = text(purchase.provider, "Purchase") + " · matched purchase";
     } else if (annotation.note) {
       evidenceLine = "Note: " + clip(annotation.note, 42);
     } else if (annotation.label) {
       evidenceLine = "User label" + (annotation.keypath ? " · " + annotation.keypath : "");
+    } else if (node.terminal_detail) {
+      evidenceLine = clip(node.terminal_detail, 46);
     } else if (purchases.length > 0) {
       evidenceLine = purchases.length + " linked purchase record(s)";
     } else if (target.identifier) {
@@ -645,7 +692,7 @@
     if (layout.nodes.length === 0) {
       const row = make("tr");
       const cell = make("td", "empty-state", "No graph nodes are selected.");
-      cell.colSpan = 7;
+      cell.colSpan = 8;
       row.appendChild(cell);
       body.appendChild(row);
       return;
@@ -656,10 +703,13 @@
       const identifier = text(node.outpoint) || text(node.txid) || text(node.id);
       const purchases = api.uniqueStrings(node.purchase_ids);
       const fiat = annotation.fiat ? formatFiat(annotation.fiat) : "";
+      const date = dateLabel(node.block_time) || annotationDate(annotation) ||
+        (purchases.length > 0 && purchaseById.get(purchases[0]) ? dateLabel(purchaseById.get(purchases[0]).date) : "");
       const row = make("tr");
       append(row,
         make("td", "", graphKind(node).replaceAll("_", " ")),
-        make("td", "", shortIdentifier(secret(identifier))),
+        make("td", "", date || "—"),
+        make("td", "", secret(identifier)),
         make("td", "", secret(text(node.address)) || "—"),
         make("td", "", Number.isSafeInteger(node.value_sats) ? formatBtcAmount(node.value_sats) : "—"),
         make("td", "", fiat || "—"),
@@ -1030,7 +1080,7 @@
   }
 
   function changeZoom(factor) {
-    state.zoom = Math.min(4, Math.max(0.25, state.zoom * factor));
+    state.zoom = Math.min(20, Math.max(0.25, state.zoom * factor));
     updateGraphTransform();
   }
 
