@@ -209,6 +209,11 @@ func ValidatePurchases(file model.PurchaseFile, baseDir string, verifyArtifacts 
 		if purchase.Height < 0 {
 			return fmt.Errorf("purchase %q height must not be negative", purchase.ID)
 		}
+		if purchase.StatementDate != "" {
+			if _, err := time.Parse("2006-01-02", purchase.StatementDate); err != nil {
+				return fmt.Errorf("purchase %q has invalid statement_date: %w", purchase.ID, err)
+			}
+		}
 		if purchase.Fiat != nil && (!fiatPattern.MatchString(purchase.Fiat.Amount) || !currencyPattern.MatchString(purchase.Fiat.Currency)) {
 			return fmt.Errorf("purchase %q has invalid fiat amount or three-letter currency", purchase.ID)
 		}

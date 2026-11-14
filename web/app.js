@@ -998,6 +998,124 @@
     };
   }
 
+  function renderStatementDays() {
+    const body = byId("statement-days-body");
+    if (!body) {
+      return;
+    }
+    body.replaceChildren();
+    const groups = new Map();
+    for (const purchase of allPurchases) {
+      if (!isRecord(purchase)) {
+        continue;
+      }
+      const date = purchaseStatementDate(purchase);
+      if (!groups.has(date)) {
+        groups.set(date, { count: 0, sats: 0, providers: new Set(), ids: [] });
+      }
+      const group = groups.get(date);
+      group.count += 1;
+      if (Number.isSafeInteger(purchase.amount_sats)) {
+        group.sats += purchase.amount_sats;
+      }
+      if (text(purchase.provider)) {
+        group.providers.add(text(purchase.provider));
+      }
+      if (text(purchase.id)) {
+        group.ids.push(text(purchase.id));
+      }
+    }
+    const dates = Array.from(groups.keys()).sort();
+    const months = new Set(dates.filter(function (date) { return date.length >= 7; }).map(function (date) { return date.slice(0, 7); }));
+    const matched = new Set();
+    for (const item of asArray(report.evidence)) {
+      if (isRecord(item) && item.matched === true) {
+        for (const id of asArray(item.purchase_ids)) {
+          matched.add(id);
+        }
+      }
+    }
+    const unmatched = allPurchases.filter(function (purchase) {
+      return isRecord(purchase) && !matched.has(text(purchase.id));
+    });
+    byId("statement-summary").textContent = dates.length === 0
+      ? "No purchase records were supplied."
+      : dates.length + " statement day(s), " + months.size + " month(s), " +
+        allPurchases.length + " recorded purchase(s), " + unmatched.length + " unmatched to current ancestry.";
+    for (const date of dates) {
+      const group = groups.get(date);
+      const row = make("tr");
+      append(row,
+        make("td", "", date === "undated" ? "undated" : secret(date)),
+        make("td", "", formatCount(group.count)),
+        make("td", "", formatBtcAmount(group.sats)),
+        make("td", "", secret(Array.from(group.providers).sort().join(", ") || "—", "[redacted provider]")),
+        make("td", "", group.ids.map(function (id) { return secret(id, "[redacted purchase]"); }).join(", ")));
+      body.appendChild(row);
+    }
+
+    const monthGroups = new Map();
+    for (const date of dates) {
+      if (date.length < 7) {
+        continue;
+      }
+      const key = date.slice(0, 7);
+      if (!monthGroups.has(key)) {
+        monthGroups.set(key, { count: 0, sats: 0 });
+      }
+      const group = monthGroups.get(key);
+      group.count += groups.get(date).count;
+      group.sats += groups.get(date).sats;
+    }
+    const monthBody = byId("statement-months-body");
+    monthBody.replaceChildren();
+    for (const key of Array.from(monthGroups.keys()).sort()) {
+      const group = monthGroups.get(key);
+      const row = make("tr");
+      append(row,
+        make("td", "", key.slice(0, 4)),
+        make("td", "", key.slice(5, 7)),
+        make("td", "", formatCount(group.count)),
+        make("td", "", formatBtcAmount(group.sats)));
+      monthBody.appendChild(row);
+    }
+    const unmatchedBody = byId("unmatched-purchases-body");
+    unmatchedBody.replaceChildren();
+    if (unmatched.length === 0) {
+      const row = make("tr");
+      const cell = make("td", "empty-cell", "Every recorded purchase appears in the current-UTXO ancestry.");
+      cell.colSpan = 4;
+      row.appendChild(cell);
+      unmatchedBody.appendChild(row);
+    } else {
+      for (const purchase of unmatched.slice().sort(function (left, right) {
+        return text(left.date).localeCompare(text(right.date));
+      })) {
+        const row = make("tr");
+        append(row,
+          make("td", "", secret(purchaseStatementDate(purchase))),
+          make("td", "", formatBtcAmount(Number.isSafeInteger(purchase.amount_sats) ? purchase.amount_sats : 0)),
+          make("td", "", secret(text(purchase.id), "[redacted purchase]")),
+          make("td", "", "not in current ancestry"));
+        unmatchedBody.appendChild(row);
+      }
+    }
+  }
+
+  function purchaseStatementDate(purchase) {
+    if (typeof purchase.statement_date === "string" && purchase.statement_date.length > 0) {
+      return purchase.statement_date;
+    }
+    if (typeof purchase.date === "string" && purchase.date.length >= 10) {
+      const parsed = new Date(purchase.date);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.getFullYear() + "-" + String(parsed.getMonth() + 1).padStart(2, "0") + "-" + String(parsed.getDate()).padStart(2, "0");
+      }
+      return purchase.date.slice(0, 10);
+    }
+    return "undated";
+  }
+
   function renderResults() {
     const visible = api.filterUtxos(allUtxos, state);
     const roots = api.uniqueStrings(visible.map(function (utxo) { return "out:" + utxo.outpoint; }));
@@ -1009,6 +1127,7 @@
     renderSummary();
     renderUtxos(visible);
     renderGraph(state.layout);
+    renderStatementDays();
     renderTimeline(state.layout);
     renderPurchases();
     renderEvidenceDiagnostics();

@@ -126,7 +126,7 @@ type zipArchiveFunc func(map[string][]byte) ([]byte, error)
 
 func bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir string, archive zipArchiveFunc) error {
 	files := map[string][]byte{"README-accountant.txt": []byte(accountantReadme)}
-	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"} {
+	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "report.html", "report.svg", "report.pdf"} {
 		data, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
 			return fmt.Errorf("bundle requires %s; run audit and PDF generation first: %w", name, err)

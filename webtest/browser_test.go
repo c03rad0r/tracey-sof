@@ -84,7 +84,7 @@ func TestOfflineReportRendersWithoutExternalServices(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	dom := runChromium(t, ctx, chromiumPath(t), html)
-	for _, expected := range []string{`class="sof-node node-output selected-root"`, `class="sof-node node-transaction"`, "1 of 1 current UTXOs selected", "linked purchase record(s)", "graph-viewport", "Redaction: off", "Layout: hops", "Maximum hops", "Review required", "Purchase-evidence match diagnostics", "Not observed"} {
+	for _, expected := range []string{`class="sof-node node-output selected-root"`, `class="sof-node node-transaction"`, "1 of 1 current UTXOs selected", "linked purchase record(s)", "graph-viewport", "Redaction: off", "Layout: hops", "Purchase days for bank statements", "Purchase months", "Unmatched purchases", "Maximum hops", "Review required", "Purchase-evidence match diagnostics", "Not observed"} {
 		if !strings.Contains(dom, expected) {
 			t.Errorf("rendered DOM lacks %q; output follows:\n%s", expected, dom)
 		}

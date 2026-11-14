@@ -160,17 +160,18 @@ type Fiat struct {
 }
 
 type Purchase struct {
-	ID         string     `json:"id"`
-	Date       string     `json:"date,omitempty"`
-	Height     int64      `json:"height,omitempty"`
-	Provider   string     `json:"provider,omitempty"`
-	TxIDs      []string   `json:"txids,omitempty"`
-	Addresses  []string   `json:"addresses,omitempty"`
-	Outpoints  []Outpoint `json:"outpoints,omitempty"`
-	AmountSats *int64     `json:"amount_sats,omitempty"`
-	Fiat       *Fiat      `json:"fiat,omitempty"`
-	Artifacts  []Artifact `json:"artifacts,omitempty"`
-	Notes      string     `json:"notes,omitempty"`
+	ID            string     `json:"id"`
+	Date          string     `json:"date,omitempty"`
+	StatementDate string     `json:"statement_date,omitempty"`
+	Height        int64      `json:"height,omitempty"`
+	Provider      string     `json:"provider,omitempty"`
+	TxIDs         []string   `json:"txids,omitempty"`
+	Addresses     []string   `json:"addresses,omitempty"`
+	Outpoints     []Outpoint `json:"outpoints,omitempty"`
+	AmountSats    *int64     `json:"amount_sats,omitempty"`
+	Fiat          *Fiat      `json:"fiat,omitempty"`
+	Artifacts     []Artifact `json:"artifacts,omitempty"`
+	Notes         string     `json:"notes,omitempty"`
 }
 
 type Annotation struct {
