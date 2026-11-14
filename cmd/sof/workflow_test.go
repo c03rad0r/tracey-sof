@@ -104,6 +104,37 @@ func TestCLINodeDiscoverTraceReportAndExport(t *testing.T) {
 	if matches, err := filepath.Glob(filepath.Join(p.outDir, "graph-*.svg")); err != nil || len(matches) < 2 {
 		t.Fatalf("graph-*.svg = %v, %v", matches, err)
 	}
+	gapsOutput := invoke(cliCommandArguments("gaps", p))
+	if !strings.Contains(gapsOutput, "== INFLOW:") || !strings.Contains(gapsOutput, "== OUTFLOW:") {
+		t.Fatalf("gaps output = %q", gapsOutput)
+	}
+	if inflowOutput := invoke(cliCommandArguments("gaps", p, "-inflow")); !strings.Contains(inflowOutput, "== INFLOW:") || strings.Contains(inflowOutput, "== OUTFLOW:") {
+		t.Fatalf("gaps -inflow output = %q", inflowOutput)
+	}
+	if outflowOutput := invoke(cliCommandArguments("gaps", p, "-outflow")); !strings.Contains(outflowOutput, "== OUTFLOW:") || strings.Contains(outflowOutput, "== INFLOW:") {
+		t.Fatalf("gaps -outflow output = %q", outflowOutput)
+	}
+	if output := invoke(cliCommandArguments("gaps", p, "-strict")); !strings.Contains(output, "== INFLOW:") {
+		t.Fatalf("gaps-check output = %q", output)
+	}
+	if output := invoke(cliCommandArguments("gaps", p, "-strict", "-include-outflows")); !strings.Contains(output, "== OUTFLOW:") {
+		t.Fatalf("gaps-check-all output = %q", output)
+	}
+	bankCSV := filepath.Join(t.TempDir(), "bank.csv")
+	bankData := "Buchungstag;Valutadatum;Name Zahlungsbeteiligter;Verwendungszweck;Buchungstext;Betrag;Waehrung\n" +
+		"12.01.2009;12.01.2009;Example Merchant;SEPA-UMSATZ EXAMPLE-REF-001;;-123,45;EUR\n"
+	if err := os.WriteFile(bankCSV, []byte(bankData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bankOutput := invoke(cliCommandArguments("bank-import", p, "-bank-file", bankCSV, "-apply"))
+	for _, want := range []string{"matched events: 1", "attached bank evidence", "statement-requests.csv"} {
+		if !strings.Contains(bankOutput, want) {
+			t.Errorf("bank-import output %q lacks %q", bankOutput, want)
+		}
+	}
+	if output := invoke(cliCommandArguments("statement-requests", p)); !strings.Contains(output, "bank evidence matched:") {
+		t.Fatalf("statement-requests output = %q", output)
+	}
 	structuredOnly := application{stdout: &stdout, stderr: &stderr}
 	stdout.Reset()
 	if err := structuredOnly.report(ctx, p, false, false, false); err != nil {

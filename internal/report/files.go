@@ -151,17 +151,21 @@ func HTMLBytes(report model.Report, server bool) ([]byte, error) {
 }
 
 type structuredSteps struct {
-	json                  func() ([]byte, error)
-	csv                   func() ([]byte, error)
-	evidenceCSV           func() ([]byte, error)
-	purchasesCSV          func() ([]byte, error)
-	purchasesUnmatchedCSV func() ([]byte, error)
-	purchaseDatesCSV      func() ([]byte, error)
-	purchaseMonthsCSV     func() ([]byte, error)
-	purchaseYearsCSV      func() ([]byte, error)
-	html                  func() ([]byte, error)
-	svg                   func() ([]byte, error)
-	atomicWrite           func(string, []byte, os.FileMode) error
+	json                     func() ([]byte, error)
+	csv                      func() ([]byte, error)
+	evidenceCSV              func() ([]byte, error)
+	purchasesCSV             func() ([]byte, error)
+	purchasesUnmatchedCSV    func() ([]byte, error)
+	purchaseDatesCSV         func() ([]byte, error)
+	purchaseMonthsCSV        func() ([]byte, error)
+	purchaseYearsCSV         func() ([]byte, error)
+	exchangeGapsCSV          func() ([]byte, error)
+	exchangeOutflowsCSV      func() ([]byte, error)
+	exchangeGapMonthsCSV     func() ([]byte, error)
+	exchangeOutflowMonthsCSV func() ([]byte, error)
+	html                     func() ([]byte, error)
+	svg                      func() ([]byte, error)
+	atomicWrite              func(string, []byte, os.FileMode) error
 }
 
 func writeStructured(steps structuredSteps, outDir string) error {
@@ -197,6 +201,22 @@ func writeStructured(steps structuredSteps, outDir string) error {
 	if err != nil {
 		return err
 	}
+	exchangeGapsCSV, err := steps.exchangeGapsCSV()
+	if err != nil {
+		return err
+	}
+	exchangeOutflowsCSV, err := steps.exchangeOutflowsCSV()
+	if err != nil {
+		return err
+	}
+	exchangeGapMonthsCSV, err := steps.exchangeGapMonthsCSV()
+	if err != nil {
+		return err
+	}
+	exchangeOutflowMonthsCSV, err := steps.exchangeOutflowMonthsCSV()
+	if err != nil {
+		return err
+	}
 	htmlData, err := steps.html()
 	if err != nil {
 		return err
@@ -208,10 +228,14 @@ func writeStructured(steps structuredSteps, outDir string) error {
 	files := map[string][]byte{"report.json": jsonData, "report.csv": csvData, "evidence.csv": evidenceCSV,
 		"purchases.csv": purchasesCSV, "purchases-unmatched.csv": purchasesUnmatchedCSV,
 		"purchase-dates.csv": purchaseDatesCSV, "purchase-months.csv": purchaseMonthsCSV,
-		"purchase-years.csv": purchaseYearsCSV,
-		"report.html":        htmlData, "report.svg": svgData}
+		"purchase-years.csv":                purchaseYearsCSV,
+		"exchange-payouts-unaccounted.csv":  exchangeGapsCSV,
+		"exchange-outflows-unaccounted.csv": exchangeOutflowsCSV,
+		"exchange-payout-months.csv":        exchangeGapMonthsCSV,
+		"exchange-outflow-months.csv":       exchangeOutflowMonthsCSV,
+		"report.html":                       htmlData, "report.svg": svgData}
 	// Fixed order makes partial failure behavior clear and tests deterministic.
-	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "report.svg", "report.html"} {
+	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "exchange-payouts-unaccounted.csv", "exchange-outflows-unaccounted.csv", "exchange-payout-months.csv", "exchange-outflow-months.csv", "report.svg", "report.html"} {
 		if err := steps.atomicWrite(filepath.Join(outDir, name), files[name], 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", name, err)
 		}
@@ -221,17 +245,21 @@ func writeStructured(steps structuredSteps, outDir string) error {
 
 func WriteStructured(report model.Report, outDir string, server bool) error {
 	return writeStructured(structuredSteps{
-		json:                  func() ([]byte, error) { return JSONBytes(report) },
-		csv:                   func() ([]byte, error) { return CSVBytes(report) },
-		evidenceCSV:           func() ([]byte, error) { return EvidenceCSVBytes(report) },
-		purchasesCSV:          func() ([]byte, error) { return PurchasesCSVBytes(report) },
-		purchasesUnmatchedCSV: func() ([]byte, error) { return PurchasesUnmatchedCSVBytes(report) },
-		purchaseDatesCSV:      func() ([]byte, error) { return PurchaseDatesCSVBytes(report) },
-		purchaseMonthsCSV:     func() ([]byte, error) { return PurchaseMonthsCSVBytes(report) },
-		purchaseYearsCSV:      func() ([]byte, error) { return PurchaseYearsCSVBytes(report) },
-		html:                  func() ([]byte, error) { return HTMLBytes(report, server) },
-		svg:                   func() ([]byte, error) { return SVGBytes(report) },
-		atomicWrite:           AtomicWrite,
+		json:                     func() ([]byte, error) { return JSONBytes(report) },
+		csv:                      func() ([]byte, error) { return CSVBytes(report) },
+		evidenceCSV:              func() ([]byte, error) { return EvidenceCSVBytes(report) },
+		purchasesCSV:             func() ([]byte, error) { return PurchasesCSVBytes(report) },
+		purchasesUnmatchedCSV:    func() ([]byte, error) { return PurchasesUnmatchedCSVBytes(report) },
+		purchaseDatesCSV:         func() ([]byte, error) { return PurchaseDatesCSVBytes(report) },
+		purchaseMonthsCSV:        func() ([]byte, error) { return PurchaseMonthsCSVBytes(report) },
+		purchaseYearsCSV:         func() ([]byte, error) { return PurchaseYearsCSVBytes(report) },
+		exchangeGapsCSV:          func() ([]byte, error) { return ExchangeGapsCSVBytes(report) },
+		exchangeOutflowsCSV:      func() ([]byte, error) { return ExchangeOutflowsCSVBytes(report) },
+		exchangeGapMonthsCSV:     func() ([]byte, error) { return ExchangeGapMonthsCSVBytes(report) },
+		exchangeOutflowMonthsCSV: func() ([]byte, error) { return ExchangeOutflowMonthsCSVBytes(report) },
+		html:                     func() ([]byte, error) { return HTMLBytes(report, server) },
+		svg:                      func() ([]byte, error) { return SVGBytes(report) },
+		atomicWrite:              AtomicWrite,
 	}, outDir)
 }
 

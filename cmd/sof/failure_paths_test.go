@@ -46,6 +46,40 @@ func TestDiscoverCommandErrorPropagation(t *testing.T) {
 		}
 	})
 
+	t.Run("gaps requires a trace", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.gaps(context.Background(), p, true, true, true, false); err == nil {
+			t.Fatal("expected a missing-trace error")
+		}
+	})
+
+	t.Run("bank-import errors", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.bankImport(p, filepath.Join(t.TempDir(), "missing.csv"), "Example Merchant", "Example Exchange", 3, false); err == nil {
+			t.Fatal("missing bank file accepted")
+		}
+		bad := filepath.Join(t.TempDir(), "bad.csv")
+		if err := os.WriteFile(bad, []byte("not;a;bank;file\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.bankImport(p, bad, "Example Merchant", "Example Exchange", 3, false); err == nil {
+			t.Fatal("invalid bank file accepted")
+		}
+		saveCLIFixtureTrace(t, p)
+		if err := app.bankImport(p, bad, "Example Merchant", "Example Exchange", 3, false); err == nil {
+			t.Fatal("invalid bank file with trace accepted")
+		}
+		if err := app.statementRequests(p); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("input error", func(t *testing.T) {
 		p := newCLIPaths(t, false)
 		var stdout, stderr bytes.Buffer

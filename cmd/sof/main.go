@@ -95,6 +95,38 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return app.graphs(ctx, *p)
+	case "bank-import":
+		fs, p := common("bank-import")
+		bankFile := fs.String("bank-file", "", "bank CSV export")
+		merchants := fs.String("merchant", "Example Merchant,Pocket", "comma-separated merchant keywords")
+		provider := fs.String("provider", "Example Exchange", "provider name for created purchase records")
+		window := fs.Int("window-days", 3, "date window around each on-chain event")
+		apply := fs.Bool("apply", false, "attach matched evidence and create purchase records")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *bankFile == "" {
+			return fmt.Errorf("bank-import requires -bank-file")
+		}
+		return app.bankImport(*p, *bankFile, *merchants, *provider, *window, *apply)
+	case "statement-requests":
+		fs, p := common("statement-requests")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.statementRequests(*p)
+	case "gaps":
+		fs, p := common("gaps")
+		inflowOnly := fs.Bool("inflow", false, "print only inbound exchange payouts")
+		outflowOnly := fs.Bool("outflow", false, "print only outbound exchange transfers")
+		strict := fs.Bool("strict", false, "exit non-zero while unaccounted exchange payouts remain")
+		includeOutflows := fs.Bool("include-outflows", false, "make -strict fail on outbound transfers too")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		inflow := *inflowOnly || !*outflowOnly
+		outflow := *outflowOnly || !*inflowOnly
+		return app.gaps(ctx, *p, inflow, outflow, *strict, *includeOutflows)
 	case "export":
 		fs, p := common("export")
 		if err := fs.Parse(args[1:]); err != nil {

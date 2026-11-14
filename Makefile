@@ -46,7 +46,7 @@ $(RPC_TARGETS): export BITCOIND_COOKIE_FILE := $(BITCOIND_COOKIE_FILE)
 $(RPC_TARGETS): export BITCOIND_RPC_USER := $(BITCOIND_RPC_USER)
 $(RPC_TARGETS): export BITCOIND_RPC_PASSWORD := $(BITCOIND_RPC_PASSWORD)
 
-.PHONY: help setup init vendor build clean validate labels-import node-check discover trace report audit ui graphs export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
+.PHONY: help setup init vendor build clean validate labels-import node-check discover trace report audit ui graphs bank-import statement-requests gaps gaps-inflow gaps-outflow gaps-check gaps-check-all export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
 
 help: ## Show commands
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' Makefile
@@ -144,6 +144,32 @@ ui: build ## Serve reports and local annotations on loopback
 
 graphs: build ## Write graph-all.svg and one focused SVG per current UTXO
 	$(SOF) graphs -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+
+BANK ?=
+MERCHANT ?= Example Merchant,Pocket
+APPLY ?= 0
+
+bank-import: build ## Import a bank CSV, match bank rows, write proof lists
+	@test -n "$(BANK)" || { echo 'BANK is required (path to a bank CSV export)'; exit 1; }
+	$(SOF) bank-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -bank-file "$(BANK)" -merchant "$(MERCHANT)" $(if $(filter 1 true yes,$(APPLY)),-apply,)
+
+statement-requests: build ## Regenerate bank-proof request placeholders
+	$(SOF) statement-requests -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+
+gaps: build ## Print inbound and outbound exchange gap lists
+	$(SOF) gaps -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+
+gaps-inflow: build ## Print only unaccounted inbound exchange payouts
+	$(SOF) gaps -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -inflow
+
+gaps-outflow: build ## Print only outbound exchange transfers without sale evidence
+	$(SOF) gaps -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -outflow
+
+gaps-check: build ## Fail while unaccounted inbound payouts remain
+	$(SOF) gaps -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -strict
+
+gaps-check-all: build ## Fail while inbound or outbound gaps remain
+	$(SOF) gaps -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -strict -include-outflows
 
 export: build ## Create accountant bundle and SHA-256 manifest
 	$(SOF) export -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
