@@ -206,6 +206,9 @@ func ValidatePurchases(file model.PurchaseFile, baseDir string, verifyArtifacts 
 		if purchase.AmountSats != nil && *purchase.AmountSats <= 0 {
 			return fmt.Errorf("purchase %q amount_sats must be positive", purchase.ID)
 		}
+		if purchase.Height < 0 {
+			return fmt.Errorf("purchase %q height must not be negative", purchase.ID)
+		}
 		if purchase.Fiat != nil && (!fiatPattern.MatchString(purchase.Fiat.Amount) || !currencyPattern.MatchString(purchase.Fiat.Currency)) {
 			return fmt.Errorf("purchase %q has invalid fiat amount or three-letter currency", purchase.ID)
 		}

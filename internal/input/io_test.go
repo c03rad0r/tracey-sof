@@ -159,6 +159,7 @@ func TestPurchaseAndAnnotationValidation(t *testing.T) {
 		{"address", func(p *model.PurchaseFile) { p.Purchases[0].Addresses[0] = "bad" }},
 		{"outpoint", func(p *model.PurchaseFile) { p.Purchases[0].Outpoints[0].TxID = "bad" }},
 		{"amount", func(p *model.PurchaseFile) { zero := int64(0); p.Purchases[0].AmountSats = &zero }},
+		{"negative height", func(p *model.PurchaseFile) { p.Purchases[0].Height = -1 }},
 		{"fiat", func(p *model.PurchaseFile) { p.Purchases[0].Fiat.Currency = "eur" }},
 		{"fiat amount", func(p *model.PurchaseFile) { p.Purchases[0].Fiat.Amount = "01" }},
 		{"path", func(p *model.PurchaseFile) { p.Purchases[0].Artifacts[0].Path = "../secret" }},

@@ -71,7 +71,7 @@ func TestWriteGraphsCreatesAllAndFocusedFiles(t *testing.T) {
 			t.Errorf("%s is not an SVG", filepath.Base(path))
 		}
 	}
-	for _, name := range []string{"graph-all.svg", "graph-time-all.svg", "graph-short-3.svg", "graph-time-short-3.svg"} {
+	for _, name := range []string{"graph-all.svg", "graph-height-all.svg", "graph-short-3.svg", "graph-height-short-3.svg"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestWriteGraphsErrorPaths(t *testing.T) {
 	}
 	ok := func(model.Report) ([]byte, error) { return []byte("<svg/>"), nil }
 	if _, err := writeGraphs(graphTestReport(), t.TempDir(), ok, failing); err == nil {
-		t.Fatal("expected time render error")
+		t.Fatal("expected height render error")
 	}
 	calls := 0
 	failsSecond := func(model.Report) ([]byte, error) {
@@ -102,12 +102,12 @@ func TestWriteGraphsErrorPaths(t *testing.T) {
 	failsSecondTime := func(model.Report) ([]byte, error) {
 		calls++
 		if calls > 1 {
-			return nil, errors.New("focused time render failed")
+			return nil, errors.New("focused height render failed")
 		}
 		return []byte("<svg/>"), nil
 	}
 	if _, err := writeGraphs(graphTestReport(), t.TempDir(), ok, failsSecondTime); err == nil {
-		t.Fatal("expected focused time render error")
+		t.Fatal("expected focused height render error")
 	}
 	parent := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(parent, []byte("x"), 0o600); err != nil {
@@ -124,17 +124,17 @@ func TestWriteGraphsErrorPaths(t *testing.T) {
 		t.Fatal("expected focused atomic write error")
 	}
 	blockedTime := t.TempDir()
-	if err := os.Mkdir(filepath.Join(blockedTime, "graph-time-short-3.svg"), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(blockedTime, "graph-height-short-3.svg"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := WriteGraphs(graphTestReport(), blockedTime); err == nil {
-		t.Fatal("expected focused time atomic write error")
+		t.Fatal("expected focused height atomic write error")
 	}
 	blockedAllTime := t.TempDir()
-	if err := os.Mkdir(filepath.Join(blockedAllTime, "graph-time-all.svg"), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(blockedAllTime, "graph-height-all.svg"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := WriteGraphs(graphTestReport(), blockedAllTime); err == nil {
-		t.Fatal("expected time-all atomic write error")
+		t.Fatal("expected height-all atomic write error")
 	}
 }

@@ -19,6 +19,7 @@
       "properties": {
         "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
         "date": {"type": "string", "format": "date-time"},
+        "height": {"type": "integer", "minimum": 0},
         "provider": {"type": "string"},
         "txids": {"type": "array", "items": {"$ref": "#/$defs/txid"}, "uniqueItems": true},
         "addresses": {"type": "array", "items": {"type": "string", "minLength": 14}, "uniqueItems": true},

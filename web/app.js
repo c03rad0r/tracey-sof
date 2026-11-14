@@ -738,8 +738,8 @@
     svg.replaceChildren(
       svgElement("title", { id: "svg-title" }, "Bitcoin UTXO source-of-funds graph"),
       svgElement("desc", { id: "svg-description" },
-        state.layoutMode === "time"
-          ? "One column per calendar month, oldest left and newest right. Undated nodes are grouped in the leading column."
+        state.layoutMode === "height"
+          ? "One column per distinct block height present in the graph, oldest left and newest right. Nodes without a known height are grouped in the leading column."
           : "Selected current outputs are right; exact funding transactions and previous outputs extend left. Blockchain facts and user annotations are identified separately.")
     );
     const defs = svgElement("defs");
@@ -778,6 +778,18 @@
       const from = positions.get(edge.from);
       const to = positions.get(edge.to);
       const kind = edge.kind === "funded_by" ? "funded_by" : "input";
+      if (from.x === to.x) {
+        const x = from.x + 140;
+        const downwards = from.y < to.y;
+        const startY = from.y + (downwards ? from.height / 2 : -from.height / 2);
+        const endY = to.y + (downwards ? -to.height / 2 : to.height / 2);
+        viewport.appendChild(svgElement("path", {
+          "class": "edge edge-vertical",
+          d: "M " + x + " " + startY + " L " + x + " " + endY,
+          "aria-label": kind === "funded_by" ? "Output created by funding transaction" : "Transaction spends exact previous output"
+        }));
+        continue;
+      }
       const direction = to.x >= from.x ? 1 : -1;
       const startX = from.x + direction * from.width / 2;
       const startY = from.y;
@@ -968,12 +980,22 @@
     container.appendChild(diagnostics);
   }
 
-  function nodeDateString(node) {
+  function nodeMeta(node) {
     const annotation = nodeAnnotation(node);
     const purchase = api.uniqueStrings(node.purchase_ids)
       .map(function (id) { return purchaseById.get(id); })
       .find(function (entry) { return isRecord(entry); });
-    return annotationDate(annotation) || dateLabel(node.block_time) || (purchase ? dateLabel(purchase.date) : "");
+    let height = Number.isSafeInteger(node.height) && node.height > 0 ? node.height : 0;
+    if (!height && purchase && Number.isSafeInteger(purchase.height) && purchase.height > 0) {
+      height = purchase.height;
+    }
+    if (!height && Number.isSafeInteger(annotation.height) && annotation.height > 0) {
+      height = annotation.height;
+    }
+    return {
+      height: height,
+      date: annotationDate(annotation) || dateLabel(node.block_time) || (purchase ? dateLabel(purchase.date) : "")
+    };
   }
 
   function renderResults() {
@@ -981,8 +1003,8 @@
     const roots = api.uniqueStrings(visible.map(function (utxo) { return "out:" + utxo.outpoint; }));
     state.selectedRoots = new Set(roots);
     const selectedGraph = api.selectGraph(baseGraph, roots);
-    state.layout = state.layoutMode === "time"
-      ? api.layoutGraphTime(selectedGraph, nodeDateString)
+    state.layout = state.layoutMode === "height"
+      ? api.layoutGraphHeight(selectedGraph, nodeMeta)
       : api.layoutGraph(selectedGraph);
     renderSummary();
     renderUtxos(visible);
@@ -1185,8 +1207,8 @@
     byId("zoom-out").addEventListener("click", function () { changeZoom(0.8); });
     byId("zoom-reset").addEventListener("click", resetView);
     byId("layout-toggle").addEventListener("click", function () {
-      state.layoutMode = state.layoutMode === "time" ? "hops" : "time";
-      byId("layout-toggle").textContent = state.layoutMode === "time" ? "Layout: time" : "Layout: hops";
+      state.layoutMode = state.layoutMode === "height" ? "hops" : "height";
+      byId("layout-toggle").textContent = state.layoutMode === "height" ? "Layout: height" : "Layout: hops";
       renderResults();
     });
     byId("pan-left").addEventListener("click", function () { pan(120, 0); });

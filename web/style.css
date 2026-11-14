@@ -127,6 +127,7 @@ textarea { resize: vertical; }
 .sof-svg .node-amount { fill: #17243a; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 650; }
 .sof-svg .node-evidence { fill: #8a570c; font-size: 9px; font-weight: 650; }
 .sof-svg .column-header { fill: #5a6474; font-size: 12px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.sof-svg .edge-vertical { stroke: #8a94a3; stroke-width: 1.2; fill: none; }
 .review-flag { color: #9a3412; font-weight: 700; }
 .evidence-diagnostics { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #bdcad7; }
 .evidence-diagnostics-table { width: 100%; border-collapse: collapse; font-size: .875rem; }

@@ -65,13 +65,13 @@ func outpointFile(prefix string, utxo model.Target) string {
 	return fmt.Sprintf("%s-%s-%d.svg", prefix, txid, utxo.Vout)
 }
 
-// WriteGraphs writes hop-layout and chronological graph families: graph-all.svg
-// and graph-time-all.svg plus one focused pair per current UTXO.
+// WriteGraphs writes hop-layout and block-height graph families: graph-all.svg
+// and graph-height-all.svg plus one focused pair per current UTXO.
 func WriteGraphs(report model.Report, outDir string) ([]string, error) {
-	return writeGraphs(report, outDir, SVGBytes, SVGBytesTime)
+	return writeGraphs(report, outDir, SVGBytes, SVGBytesHeight)
 }
 
-func writeGraphs(report model.Report, outDir string, render, renderTime func(model.Report) ([]byte, error)) ([]string, error) {
+func writeGraphs(report model.Report, outDir string, render, renderHeight func(model.Report) ([]byte, error)) ([]string, error) {
 	written := make([]string, 0, 2*(len(report.UTXOs)+1))
 	write := func(name string, data []byte) error {
 		path := filepath.Join(outDir, name)
@@ -88,11 +88,11 @@ func writeGraphs(report model.Report, outDir string, render, renderTime func(mod
 	if err := write("graph-all.svg", all); err != nil {
 		return nil, err
 	}
-	allTime, err := renderTime(report)
+	allHeight, err := renderHeight(report)
 	if err != nil {
 		return nil, err
 	}
-	if err := write("graph-time-all.svg", allTime); err != nil {
+	if err := write("graph-height-all.svg", allHeight); err != nil {
 		return nil, err
 	}
 	for _, utxo := range report.UTXOs {
@@ -105,11 +105,11 @@ func writeGraphs(report model.Report, outDir string, render, renderTime func(mod
 		if err := write(outpointFile("graph", utxo), data); err != nil {
 			return nil, err
 		}
-		timeData, err := renderTime(focused)
+		heightData, err := renderHeight(focused)
 		if err != nil {
 			return nil, err
 		}
-		if err := write(outpointFile("graph-time", utxo), timeData); err != nil {
+		if err := write(outpointFile("graph-height", utxo), heightData); err != nil {
 			return nil, err
 		}
 	}

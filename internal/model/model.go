@@ -162,6 +162,7 @@ type Fiat struct {
 type Purchase struct {
 	ID         string     `json:"id"`
 	Date       string     `json:"date,omitempty"`
+	Height     int64      `json:"height,omitempty"`
 	Provider   string     `json:"provider,omitempty"`
 	TxIDs      []string   `json:"txids,omitempty"`
 	Addresses  []string   `json:"addresses,omitempty"`
