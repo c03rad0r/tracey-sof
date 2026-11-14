@@ -173,8 +173,15 @@ type Purchase struct {
 }
 
 type Annotation struct {
-	Label string `json:"label,omitempty"`
-	Note  string `json:"note,omitempty"`
+	Label     string            `json:"label,omitempty"`
+	Note      string            `json:"note,omitempty"`
+	ValueSats *int64            `json:"value_sats,omitempty"`
+	Fiat      map[string]string `json:"fiat,omitempty"`
+	Rate      map[string]string `json:"rate,omitempty"`
+	Time      string            `json:"time,omitempty"`
+	Height    int64             `json:"height,omitempty"`
+	KeyPath   string            `json:"keypath,omitempty"`
+	Origin    string            `json:"origin,omitempty"`
 }
 
 type PurchaseLink struct {
@@ -230,6 +237,7 @@ type AnnotationFile struct {
 	Transactions  map[string]Annotation `json:"transactions,omitempty"`
 	Addresses     map[string]Annotation `json:"addresses,omitempty"`
 	Outpoints     map[string]Annotation `json:"outpoints,omitempty"`
+	XPubs         map[string]Annotation `json:"xpubs,omitempty"`
 	PurchaseLinks []PurchaseLink        `json:"purchase_links,omitempty"`
 }
 

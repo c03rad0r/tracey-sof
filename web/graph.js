@@ -151,16 +151,16 @@
       return left.depth - right.depth || left.index - right.index;
     });
     const positions = new Array(count);
-    const nodeWidth = 240;
-    const nodeHeight = 108;
+    const nodeWidth = 300;
+    const nodeHeight = 150;
     for (const item of sorted) {
       const row = columnRows[item.depth];
       positions[item.index] = {
         id: nodes[item.index].id,
         depth: item.depth,
         row: row,
-        x: 32 + (maxDepth - item.depth) * 320,
-        y: 32 + row * 158,
+        x: 32 + (maxDepth - item.depth) * 380,
+        y: 32 + row * 210,
         width: nodeWidth,
         height: nodeHeight
       };
@@ -170,8 +170,8 @@
       nodes: nodes,
       edges: edges,
       positions: positions,
-      width: 64 + (maxDepth + 1) * 320,
-      height: Math.max(180, 64 + Math.max.apply(null, columnRows) * 158),
+      width: 64 + (maxDepth + 1) * 380,
+      height: Math.max(260, 64 + Math.max.apply(null, columnRows) * 210),
       maxDepth: maxDepth
     };
   }
@@ -183,6 +183,17 @@
     return value.toLocaleString("en-US") + " sats";
   }
 
+  function formatBtc(value) {
+    if (!Number.isSafeInteger(value)) {
+      return "—";
+    }
+    const negative = value < 0;
+    const absolute = Math.abs(value);
+    const whole = Math.floor(absolute / 100000000);
+    const fraction = String(absolute % 100000000).padStart(8, "0");
+    return (negative ? "-" : "") + whole + "." + fraction + " BTC";
+  }
+
   return Object.freeze({
     uniqueStrings: uniqueStrings,
     utxoMatches: utxoMatches,
@@ -190,6 +201,7 @@
     normalizeGraph: normalizeGraph,
     selectGraph: selectGraph,
     layoutGraph: layoutGraph,
-    formatSats: formatSats
+    formatSats: formatSats,
+    formatBtc: formatBtc
   });
 }));

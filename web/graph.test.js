@@ -21,6 +21,7 @@ test("CommonJS export is dependency-free, complete, and immutable", function () 
   assert.equal(Object.isFrozen(graph), true);
   assert.deepEqual(Object.keys(graph).sort(), [
     "filterUtxos",
+    "formatBtc",
     "formatSats",
     "layoutGraph",
     "normalizeGraph",
@@ -179,16 +180,16 @@ test("layoutGraph stacks disconnected roots deterministically in the current-UTX
   const source = { nodes: [node("current-b"), node("current-a")], edges: [] };
   const layout = graph.layoutGraph(source);
   assert.equal(layout.maxDepth, 0);
-  assert.equal(layout.width, 384);
-  assert.equal(layout.height, 380);
+  assert.equal(layout.width, 444);
+  assert.equal(layout.height, 484);
   assert.deepEqual(layout.positions.map(function (position) {
     return { id: position.id, depth: position.depth, row: position.row, x: position.x, y: position.y };
   }), [
     { id: "current-b", depth: 0, row: 0, x: 32, y: 32 },
-    { id: "current-a", depth: 0, row: 1, x: 32, y: 190 }
+    { id: "current-a", depth: 0, row: 1, x: 32, y: 242 }
   ]);
-  assert.equal(layout.positions[0].width, 240);
-  assert.equal(layout.positions[0].height, 108);
+  assert.equal(layout.positions[0].width, 300);
+  assert.equal(layout.positions[0].height, 150);
 });
 
 test("layoutGraph puts current outputs right and progressively older ancestry left", function () {
@@ -209,13 +210,13 @@ test("layoutGraph puts current outputs right and progressively older ancestry le
   };
   const layout = graph.layoutGraph(source);
   assert.equal(layout.maxDepth, 4);
-  assert.equal(layout.width, 1664);
-  assert.equal(layout.height, 222);
+  assert.equal(layout.width, 1964);
+  assert.equal(layout.height, 274);
   assert.deepEqual(layout.positions.map(function (position) { return position.depth; }), [0, 1, 2, 3, 4]);
   for (let index = 1; index < layout.positions.length; index += 1) {
     assert.ok(layout.positions[index].x < layout.positions[index - 1].x);
   }
-  assert.equal(layout.positions[0].x, 32 + 4 * 320);
+  assert.equal(layout.positions[0].x, 32 + 4 * 380);
   assert.equal(layout.positions[4].x, 32);
 });
 
@@ -291,5 +292,16 @@ test("formatSats handles integer, negative, zero, and malformed numeric values",
   for (const value of [undefined, null, "100", 1.25, NaN, Infinity, -Infinity,
     Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1, 100n]) {
     assert.equal(graph.formatSats(value), "—");
+  }
+});
+
+test("formatBtc renders exact eight-decimal bitcoin amounts", function () {
+  assert.equal(graph.formatBtc(0), "0.00000000 BTC");
+  assert.equal(graph.formatBtc(780), "0.00000780 BTC");
+  assert.equal(graph.formatBtc(15633335), "0.15633335 BTC");
+  assert.equal(graph.formatBtc(100000000), "1.00000000 BTC");
+  assert.equal(graph.formatBtc(-150), "-0.00000150 BTC");
+  for (const value of [undefined, null, "100", 1.25, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 100n]) {
+    assert.equal(graph.formatBtc(value), "—");
   }
 });

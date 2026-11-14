@@ -12,7 +12,20 @@ import (
 	"time"
 )
 
+// PDFOptions controls report printing.
+type PDFOptions struct {
+	// Unredacted renders identifiers and amounts instead of [redacted] placeholders.
+	// Callers must request this explicitly; the default output stays safe to share.
+	Unredacted bool
+}
+
+// PDF renders report.html with the default redacted display.
 func PDF(ctx context.Context, outDir, browser string) error {
+	return PDFWithOptions(ctx, outDir, browser, PDFOptions{})
+}
+
+// PDFWithOptions renders report.html, optionally with identifiers visible.
+func PDFWithOptions(ctx context.Context, outDir, browser string, options PDFOptions) error {
 	absoluteOut, err := filepath.Abs(outDir)
 	if err != nil {
 		return fmt.Errorf("resolve report output directory: %w", err)
@@ -38,7 +51,11 @@ func PDF(ctx context.Context, outDir, browser string) error {
 	}
 	defer os.RemoveAll(profile)
 	pdfPath := filepath.Join(outDir, "report.pdf")
-	htmlURL := (&url.URL{Scheme: "file", Path: filepath.Join(outDir, "report.html")}).String()
+	htmlLocation := &url.URL{Scheme: "file", Path: filepath.Join(outDir, "report.html")}
+	if options.Unredacted {
+		htmlLocation.RawQuery = "redact=0"
+	}
+	htmlURL := htmlLocation.String()
 	args := []string{"--headless", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--no-first-run", "--no-default-browser-check", "--no-pdf-header-footer", "--user-data-dir=" + profile, "--print-to-pdf=" + pdfPath, htmlURL}
 	command := exec.CommandContext(ctx, browser, args...)
 	var output bytes.Buffer

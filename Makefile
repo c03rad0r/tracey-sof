@@ -13,6 +13,7 @@ CACHE_DIR ?= ./cache
 INBOX ?= ./data/inbox
 SOF := ./bin/sof
 ENV_FILE ?= node.env
+UNREDACTED ?= 0
 ANSIBLE_INVENTORY ?= ansible/inventory.example.ini
 ANSIBLE_ARGS ?=
 ANSIBLE_CONFIG := $(PROJECT)/ansible/ansible.cfg
@@ -43,7 +44,7 @@ $(RPC_TARGETS): export BITCOIND_COOKIE_FILE := $(BITCOIND_COOKIE_FILE)
 $(RPC_TARGETS): export BITCOIND_RPC_USER := $(BITCOIND_RPC_USER)
 $(RPC_TARGETS): export BITCOIND_RPC_PASSWORD := $(BITCOIND_RPC_PASSWORD)
 
-.PHONY: help setup init vendor build clean validate node-check discover trace report audit ui export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
+.PHONY: help setup init vendor build clean validate labels-import node-check discover trace report audit ui export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
 
 help: ## Show commands
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' Makefile
@@ -104,6 +105,11 @@ build: init ## Build the CLI with embedded offline UI
 validate: build ## Validate local JSON inputs and evidence hashes
 	$(SOF) validate -data-dir $(DATA_DIR)
 
+labels-import: build ## Merge a Sparrow/BIP-329 JSONL export into data/annotations.json
+	@test -n "$(LABELS)" || { echo 'LABELS is required (path to a BIP-329 .jsonl export)'; exit 1; }
+	python3 ./scripts/import-bip329.py "$(LABELS)" --annotations $(DATA_DIR)/annotations.json $(if $(filter 1 true yes,$(OVERWRITE)),--overwrite,)
+	$(SOF) validate -data-dir $(DATA_DIR)
+
 node-check: build ## Check Core connectivity and capabilities without changing the node
 	$(SOF) node-check -data-dir $(DATA_DIR)
 
@@ -141,7 +147,7 @@ example: build ## Build an offline example from real mainnet fixtures
 	$(SOF) example -out-dir ./out/example -fixtures ./testdata/mainnet
 
 pdf: build ## Regenerate PDF through a local Chromium installation
-	$(SOF) pdf -out-dir $(OUT_DIR)
+	$(SOF) pdf -out-dir $(OUT_DIR) -unredacted=$(UNREDACTED)
 
 test: test-go test-web ## Run all offline tests
 

@@ -9,10 +9,27 @@
     "transactions": {"type": "object", "propertyNames": {"pattern": "^[0-9a-f]{64}$"}, "additionalProperties": {"$ref": "#/$defs/annotation"}},
     "addresses": {"type": "object", "additionalProperties": {"$ref": "#/$defs/annotation"}},
     "outpoints": {"type": "object", "additionalProperties": {"$ref": "#/$defs/annotation"}},
+    "xpubs": {"type": "object", "propertyNames": {"pattern": "^xpub[1-9A-HJ-NP-Za-km-z]+$"}, "additionalProperties": {"$ref": "#/$defs/annotation"}},
     "purchase_links": {"type": "array", "items": {"$ref": "#/$defs/link"}}
   },
   "$defs": {
-    "annotation": {"type": "object", "additionalProperties": false, "required": [], "properties": {"label": {"type": "string"}, "note": {"type": "string"}}},
+    "amount": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,18})?$"},
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {"type": "string"},
+        "note": {"type": "string"},
+        "value_sats": {"type": "integer", "minimum": 0},
+        "fiat": {"type": "object", "propertyNames": {"pattern": "^[A-Z]{3}$"}, "additionalProperties": {"$ref": "#/$defs/amount"}},
+        "rate": {"type": "object", "propertyNames": {"pattern": "^[A-Z]{3}$"}, "additionalProperties": {"$ref": "#/$defs/amount"}},
+        "time": {"type": "string", "format": "date-time"},
+        "height": {"type": "integer", "minimum": 0},
+        "keypath": {"type": "string"},
+        "origin": {"type": "string"}
+      }
+    },
     "link": {"type": "object", "additionalProperties": false, "required": ["target", "purchase_id", "decision"], "properties": {"target": {"type": "string", "minLength": 1}, "purchase_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"}, "decision": {"enum": ["confirmed", "rejected"]}, "note": {"type": "string"}}}
   }
 }

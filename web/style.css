@@ -123,6 +123,8 @@ textarea { resize: vertical; }
 .sof-svg .node-kicker { fill: #5a6474; font-size: 9px; font-weight: 750; letter-spacing: .07em; }
 .sof-svg .node-heading { fill: #17243a; font-size: 14px; font-weight: 750; }
 .sof-svg .node-text { fill: #334155; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.sof-svg .node-small { fill: #475569; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; }
+.sof-svg .node-amount { fill: #17243a; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 650; }
 .sof-svg .node-evidence { fill: #8a570c; font-size: 9px; font-weight: 650; }
 .review-flag { color: #9a3412; font-weight: 700; }
 .evidence-diagnostics { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #bdcad7; }

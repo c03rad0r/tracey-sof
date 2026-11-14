@@ -68,8 +68,9 @@
   const baseGraph = api.normalizeGraph(report.graph);
   const allUtxos = asArray(report.utxos);
   const allPurchases = asArray(report.purchases);
+  const query = typeof window === "object" && window.location ? new URLSearchParams(window.location.search) : null;
   const state = {
-    redacted: true,
+    redacted: !(query && query.get("redact") === "0"),
     status: "all",
     purchaseId: "all",
     zoom: 1,
@@ -79,13 +80,115 @@
     viewportHeight: 520,
     layout: null,
     selectedRoots: new Set(),
-    annotations: { transaction: new Map(), address: new Map() },
+    annotations: { transaction: new Map(), address: new Map(), outpoint: new Map() },
+    xpubs: new Map(),
     activeAnnotation: null,
     saving: false,
     lastFocus: null,
     drag: null,
     dragged: false
   };
+
+  function parseAnnotationMap(source) {
+    const map = new Map();
+    if (!isRecord(source)) {
+      return map;
+    }
+    for (const identifier of Object.keys(source)) {
+      if (isRecord(source[identifier])) {
+        map.set(identifier, source[identifier]);
+      }
+    }
+    return map;
+  }
+
+  const annotationFile = isRecord(report.annotations) ? report.annotations : {};
+  state.annotations.transaction = parseAnnotationMap(annotationFile.transactions);
+  state.annotations.address = parseAnnotationMap(annotationFile.addresses);
+  state.annotations.outpoint = parseAnnotationMap(annotationFile.outpoints);
+  state.xpubs = parseAnnotationMap(annotationFile.xpubs);
+
+  const utxoByOutpoint = new Map();
+  for (const utxo of allUtxos) {
+    if (isRecord(utxo) && text(utxo.outpoint)) {
+      utxoByOutpoint.set(text(utxo.outpoint), utxo);
+    }
+  }
+
+  function rawAnnotation(kind, identifier) {
+    if (!identifier || !state.annotations[kind]) {
+      return {};
+    }
+    return state.annotations[kind].get(identifier) || {};
+  }
+
+  function formatBtcAmount(value) {
+    if (state.redacted) {
+      return "[redacted amount]";
+    }
+    return api.formatBtc(value);
+  }
+
+  function preferredCurrency(values) {
+    if (!isRecord(values)) {
+      return "";
+    }
+    const currencies = Object.keys(values);
+    if (currencies.includes("USD")) {
+      return "USD";
+    }
+    return currencies.length > 0 ? currencies[0] : "";
+  }
+
+  function formatFiat(values) {
+    const currency = preferredCurrency(values);
+    if (!currency) {
+      return "";
+    }
+    if (state.redacted) {
+      return "[redacted fiat value]";
+    }
+    const number = Number(values[currency]);
+    const amount = Number.isFinite(number) ? number.toLocaleString("en-US", { maximumFractionDigits: 8 }) : values[currency];
+    return (currency === "USD" ? "$" : "") + amount + " " + currency;
+  }
+
+  function annotationDate(annotation) {
+    return typeof annotation.time === "string" && annotation.time.length >= 10 ? annotation.time.slice(0, 10) : "";
+  }
+
+  function nodeAnnotation(node) {
+    if (node.kind === "transaction") {
+      return rawAnnotation("transaction", text(node.txid) || text(node.id));
+    }
+    const outpoint = rawAnnotation("outpoint", text(node.outpoint));
+    if (outpoint.label || outpoint.fiat || outpoint.time || outpoint.value_sats !== undefined) {
+      return outpoint;
+    }
+    return rawAnnotation("address", text(node.address));
+  }
+
+  function nodeTitle(node) {
+    const annotation = nodeAnnotation(node);
+    const parts = [node.kind, annotation.label, node.txid, node.outpoint, node.address];
+    if (Number.isSafeInteger(node.value_sats)) {
+      parts.push(api.formatBtc(node.value_sats), api.formatSats(node.value_sats));
+    }
+    const fiat = annotation.fiat ? formatFiat(annotation.fiat) : "";
+    if (fiat) {
+      parts.push(fiat + (annotationDate(annotation) ? " at " + annotationDate(annotation) : ""));
+    }
+    if (annotation.rate) {
+      parts.push("rate " + formatFiat(annotation.rate) + "/BTC");
+    }
+    if (annotation.keypath) {
+      parts.push("keypath " + annotation.keypath);
+    }
+    if (annotation.note) {
+      parts.push("note " + annotation.note);
+    }
+    return parts.filter(function (part) { return typeof part === "string" && part.length > 0; }).join(" · ");
+  }
 
   function secret(value, redactedText) {
     const present = text(value);
@@ -227,8 +330,17 @@
       ["Transaction budget", policyValue(policy.max_transactions)],
       ["Stop ancestor value at", policyValue(policy.stop_if_prevout_value_sats_gte) + (policy.stop_if_prevout_value_sats_gte > 0 ? " sats" : "")],
       ["Fan-in / fan-out stop", policyValue(policy.stop_if_input_count_gte) + " / " + policyValue(policy.stop_if_output_count_gte)],
-      ["Oldest traced block", policyValue(policy.stop_before_block_height)]
+      ["Oldest traced block", policyValue(policy.stop_before_block_height)],
+      ["Amounts", "BTC, plus wallet-recorded fiat at transaction time when the wallet supplied it"]
     ];
+    if (state.xpubs.size > 0) {
+      const labels = Array.from(state.xpubs.values())
+        .map(function (annotation) { return text(annotation.label); })
+        .filter(function (label) { return label; });
+      if (labels.length > 0) {
+        entries.push(["Keystore labels", secret(labels.join(", "), "[redacted keystore labels]")]);
+      }
+    }
     const metadata = byId("report-metadata");
     metadata.replaceChildren();
     for (const entry of entries) {
@@ -355,10 +467,19 @@
         }
         noteCell.appendChild(noteList);
       }
+      const valueCell = make("td");
+      append(valueCell,
+        make("div", "", formatBtcAmount(utxo.value_sats)),
+        make("div", "muted", formatSats(utxo.value_sats)));
+      const outpointAnnotation = rawAnnotation("outpoint", outpoint);
+      if (outpointAnnotation.fiat) {
+        valueCell.appendChild(make("div", "muted",
+          formatFiat(outpointAnnotation.fiat) + (annotationDate(outpointAnnotation) ? " on " + annotationDate(outpointAnnotation) : "")));
+      }
       append(row,
         txCell,
         addressCell,
-        make("td", "", formatSats(utxo.value_sats)),
+        valueCell,
         make("td", "", ""),
         make("td", "", ""),
         evidenceCell,
@@ -407,21 +528,32 @@
     return { kind: "", identifier: "" };
   }
 
+  function clip(value, maximum) {
+    const content = text(value);
+    return content.length > maximum ? content.slice(0, maximum - 1) + "…" : content;
+  }
+
   function graphNode(node, position) {
     const kind = graphKind(node);
     const target = graphTarget(node);
     const selected = state.selectedRoots.has(node.id);
-    const annotation = annotationLabel(target.kind, target.identifier);
+    const annotation = nodeAnnotation(node);
+    const fiat = annotation.fiat ? formatFiat(annotation.fiat) : "";
+    const rate = annotation.rate ? formatFiat(annotation.rate) : "";
+    const date = annotationDate(annotation);
+    const label = annotation.label || node.label || "";
     let heading = "Ancestry endpoint";
     let kicker = "TRACE BOUNDARY · NOT AN OWNERSHIP CLAIM";
     if (kind === "transaction") {
-      heading = annotation || "Transaction";
+      heading = label ? (state.redacted ? "Redacted user annotation" : clip(label, 36)) : "Transaction";
       kicker = "BLOCKCHAIN FACT · TRANSACTION";
     } else if (kind === "output") {
-      heading = annotation || (selected ? "Current selected UTXO" : "Previous output");
+      heading = label ? (state.redacted ? "Redacted user annotation" : clip(label, 36))
+        : (selected ? "Current selected UTXO" : "Previous output");
       kicker = selected ? "BLOCKCHAIN FACT · CURRENT UTXO" : "BLOCKCHAIN FACT · OUTPUT";
     } else {
-      heading = annotation || text(node.terminal_reason, "Ancestry endpoint");
+      heading = label ? (state.redacted ? "Redacted user annotation" : clip(label, 36))
+        : clip(text(node.terminal_reason, "Ancestry endpoint"), 36);
       kicker = "TRACE BOUNDARY";
     }
     const group = svgElement("g", {
@@ -430,6 +562,7 @@
       role: target.identifier ? "button" : "img",
       "aria-label": heading + (target.identifier ? ". Activate to edit user annotation." : ". Trace boundary.")
     });
+    group.appendChild(svgElement("title", {}, state.redacted ? "Redacted node details" : nodeTitle(node)));
     if (target.identifier) {
       group.setAttribute("tabindex", "0");
       group.addEventListener("click", function () {
@@ -448,30 +581,61 @@
       "class": "node-outline", width: position.width, height: position.height, rx: 10
     }));
     svgText(group, "node-kicker", 12, 18, kicker);
-    svgText(group, "node-heading", 12, 40, heading);
-    let identifier = target.identifier;
-    if (!identifier) {
-      identifier = text(node.outpoint) || text(node.txid) || text(node.id);
+    svgText(group, "node-heading", 12, 38, heading);
+    let primary = "";
+    let secondary = "";
+    if (kind === "transaction") {
+      primary = secret(text(node.txid) || text(node.id));
+      secondary = [annotation.height ? "block " + formatCount(annotation.height) : "", rate ? "rate " + rate + "/BTC" : ""]
+        .filter(function (part) { return part; }).join(" · ");
+    } else {
+      primary = secret(text(node.address)) || secret(text(node.outpoint)) || secret(text(node.id));
+      secondary = text(node.outpoint) && primary !== secret(text(node.outpoint)) ? secret(text(node.outpoint)) : "";
     }
-    svgText(group, "node-text", 12, 61, shortIdentifier(secret(identifier)));
-    let factLine = kind === "terminal" ? text(node.terminal_detail, "Traversal stopped here") : text(node.script_type);
+    let amountLine = "";
     if (Number.isSafeInteger(node.value_sats)) {
-      factLine = formatSats(node.value_sats) + (factLine ? " · " + factLine : "");
+      amountLine = formatBtcAmount(node.value_sats) + " · " + formatSats(node.value_sats);
     }
-    svgText(group, factLine.startsWith("[redacted") ? "node-text" : "node-text", 12, 79, factLine);
+    let fiatLine = "";
+    if (fiat) {
+      fiatLine = (state.redacted ? fiat : fiat + (date ? " on " + date : "")) + " (wallet-recorded)";
+    }
+    let ownerLine = "";
+    const utxo = utxoByOutpoint.get(text(node.outpoint));
+    if (utxo) {
+      const owners = api.uniqueStrings(utxo.owner_ids);
+      const ownerLabels = api.uniqueStrings(utxo.labels);
+      ownerLine = [owners.join(", "), ownerLabels.join(", ")].filter(function (part) { return part; }).join(" · ");
+      if (state.redacted && ownerLine) {
+        ownerLine = "[redacted owner]";
+      }
+    }
     const purchases = api.uniqueStrings(node.purchase_ids);
     let evidenceLine = "No user annotation · no purchase evidence";
-    const saved = target.identifier ? getAnnotation(target.kind, target.identifier) : { label: "", note: "" };
-    if (state.redacted && (saved.label || saved.note)) {
+    if (state.redacted && (annotation.label || annotation.note)) {
       evidenceLine = "Redacted user annotation";
-    } else if (saved.label || saved.note) {
-      evidenceLine = "User label/note";
+    } else if (annotation.note) {
+      evidenceLine = "Note: " + clip(annotation.note, 42);
+    } else if (annotation.label) {
+      evidenceLine = "User label" + (annotation.keypath ? " · " + annotation.keypath : "");
     } else if (purchases.length > 0) {
       evidenceLine = purchases.length + " linked purchase record(s)";
     } else if (target.identifier) {
       evidenceLine = "Activate to add user label/note";
     }
-    svgText(group, "node-evidence", 12, 98, evidenceLine);
+    const lines = [
+      [primary, "node-text", 56],
+      [secondary, "node-small", 72],
+      [amountLine, "node-amount", 90],
+      [fiatLine, "node-small", 106],
+      [ownerLine, "node-small", 122],
+      [evidenceLine, "node-evidence", 138]
+    ];
+    for (const line of lines) {
+      if (line[0]) {
+        svgText(group, line[1], 12, line[2], clip(line[0], 46));
+      }
+    }
     return group;
   }
 
@@ -481,21 +645,25 @@
     if (layout.nodes.length === 0) {
       const row = make("tr");
       const cell = make("td", "empty-state", "No graph nodes are selected.");
-      cell.colSpan = 5;
+      cell.colSpan = 7;
       row.appendChild(cell);
       body.appendChild(row);
       return;
     }
     for (const node of layout.nodes) {
       const target = graphTarget(node);
-      const identifier = target.identifier || text(node.outpoint) || text(node.txid) || text(node.id);
+      const annotation = nodeAnnotation(node);
+      const identifier = text(node.outpoint) || text(node.txid) || text(node.id);
       const purchases = api.uniqueStrings(node.purchase_ids);
+      const fiat = annotation.fiat ? formatFiat(annotation.fiat) : "";
       const row = make("tr");
       append(row,
         make("td", "", graphKind(node).replaceAll("_", " ")),
         make("td", "", shortIdentifier(secret(identifier))),
-        make("td", "", Number.isSafeInteger(node.value_sats) ? formatSats(node.value_sats) : "—"),
-        make("td", "", annotationLabel(target.kind, target.identifier) || "None"),
+        make("td", "", secret(text(node.address)) || "—"),
+        make("td", "", Number.isSafeInteger(node.value_sats) ? formatBtcAmount(node.value_sats) : "—"),
+        make("td", "", fiat || "—"),
+        make("td", "", annotation.label ? secret(annotation.label, "[redacted label]") : "None"),
         make("td", "", purchases.length
           ? purchases.map(function (id) { return secret(id, "[redacted purchase]"); }).join(", ")
           : "None"));

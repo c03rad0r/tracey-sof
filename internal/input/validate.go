@@ -259,24 +259,65 @@ func verifyArtifactWithClose(baseDir string, artifact model.Artifact, closeFile 
 	return nil
 }
 
+// validateAnnotationFields checks the optional wallet-recorded metadata that can
+// accompany a label. These fields are display-only; they never affect tracing.
+func validateAnnotationFields(kind string, annotation model.Annotation) error {
+	if annotation.ValueSats != nil && *annotation.ValueSats < 0 {
+		return fmt.Errorf("%s annotation has negative value_sats", kind)
+	}
+	if annotation.Height < 0 {
+		return fmt.Errorf("%s annotation has negative height", kind)
+	}
+	if annotation.Time != "" {
+		if _, err := time.Parse(time.RFC3339, annotation.Time); err != nil {
+			return fmt.Errorf("%s annotation has invalid RFC3339 time: %w", kind, err)
+		}
+	}
+	for name, values := range map[string]map[string]string{"fiat": annotation.Fiat, "rate": annotation.Rate} {
+		for currency, amount := range values {
+			if !currencyPattern.MatchString(currency) || !fiatPattern.MatchString(amount) {
+				return fmt.Errorf("%s annotation has invalid %s amount for %q", kind, name, currency)
+			}
+		}
+	}
+	return nil
+}
+
 func ValidateAnnotations(file model.AnnotationFile) error {
 	if file.SchemaVersion != model.SchemaVersion {
 		return fmt.Errorf("unsupported schema_version %d", file.SchemaVersion)
 	}
-	for txid := range file.Transactions {
+	for txid, annotation := range file.Transactions {
 		if !validHash(txid) {
 			return fmt.Errorf("invalid annotated txid %q", txid)
 		}
-	}
-	for address := range file.Addresses {
-		if err := validateAddress(address); err != nil {
+		if err := validateAnnotationFields("transaction", annotation); err != nil {
 			return err
 		}
 	}
-	for outpoint := range file.Outpoints {
+	for address, annotation := range file.Addresses {
+		if err := validateAddress(address); err != nil {
+			return err
+		}
+		if err := validateAnnotationFields("address", annotation); err != nil {
+			return err
+		}
+	}
+	for outpoint, annotation := range file.Outpoints {
 		parsed, err := model.ParseOutpoint(outpoint)
 		if err != nil || !validHash(parsed.TxID) {
 			return fmt.Errorf("invalid annotated outpoint %q", outpoint)
+		}
+		if err := validateAnnotationFields("outpoint", annotation); err != nil {
+			return err
+		}
+	}
+	for xpub, annotation := range file.XPubs {
+		if err := validateXpub(xpub); err != nil {
+			return fmt.Errorf("annotated xpub %q: %w", xpub, err)
+		}
+		if err := validateAnnotationFields("xpub", annotation); err != nil {
+			return err
 		}
 	}
 	for _, link := range file.PurchaseLinks {
@@ -297,5 +338,5 @@ func ValidateAnnotations(file model.AnnotationFile) error {
 }
 
 func EmptyAnnotations() model.AnnotationFile {
-	return model.AnnotationFile{SchemaVersion: model.SchemaVersion, Transactions: map[string]model.Annotation{}, Addresses: map[string]model.Annotation{}, Outpoints: map[string]model.Annotation{}}
+	return model.AnnotationFile{SchemaVersion: model.SchemaVersion, Transactions: map[string]model.Annotation{}, Addresses: map[string]model.Annotation{}, Outpoints: map[string]model.Annotation{}, XPubs: map[string]model.Annotation{}}
 }

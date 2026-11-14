@@ -318,10 +318,10 @@ func (a application) buildReport(p paths) (model.Report, error) {
 	return report, err
 }
 
-func (a application) pdf(ctx context.Context, p paths) error {
+func (a application) pdf(ctx context.Context, p paths, unredacted bool) error {
 	pdfCtx, cancel := context.WithTimeout(ctx, reportfiles.PDFTimeout())
 	defer cancel()
-	if err := reportfiles.PDF(pdfCtx, p.outDir, env("CHROMIUM")); err != nil {
+	if err := reportfiles.PDFWithOptions(pdfCtx, p.outDir, env("CHROMIUM"), reportfiles.PDFOptions{Unredacted: unredacted}); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "report.pdf"))
@@ -338,7 +338,7 @@ func (a application) report(ctx context.Context, p paths, server, includePDF boo
 	}
 	fmt.Fprintf(a.stdout, "wrote report for %d UTXOs to %s\n", len(report.UTXOs), p.outDir)
 	if includePDF {
-		return a.pdf(ctx, p)
+		return a.pdf(ctx, p, false)
 	}
 	return nil
 }
@@ -418,7 +418,7 @@ func (a application) exampleWith(ctx context.Context, p paths, deps exampleDepen
 	if err := reportfiles.WriteStructured(report, p.outDir, false); err != nil {
 		return err
 	}
-	return a.pdf(ctx, p)
+	return a.pdf(ctx, p, false)
 }
 
 func (a application) testNode(ctx context.Context, p paths) error {

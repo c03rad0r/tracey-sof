@@ -104,6 +104,55 @@ func TestCoverageSVGCompleteLayoutStaticAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestCoverageSVGWalletLabelsAndFiat(t *testing.T) {
+	report := model.Report{
+		Graph: model.Graph{
+			Nodes: []model.GraphNode{
+				{ID: "out-current", Kind: "output", Outpoint: "aaaa:0", Address: "bc1qowned", ValueSats: 780, Owned: true},
+				{ID: "tx-rate", Kind: "transaction", TxID: "feed"},
+				{ID: "out-eur", Kind: "output", Outpoint: "bbbb:1", Address: "bc1qeur", ValueSats: -150},
+				{ID: "out-fallback", Kind: "output", Outpoint: "cccc:2", Address: "bc1qthird", ValueSats: 5},
+				{ID: "terminal", Kind: "terminal", TerminalReason: "policy_output_count"},
+				{ID: "bare", Kind: "output"},
+			},
+			Edges: []model.GraphEdge{{From: "out-current", To: "tx-rate", Kind: "funded_by", ValueSats: 780}},
+		},
+		Annotations: model.AnnotationFile{
+			Transactions: map[string]model.Annotation{"feed": {Label: "wallet tx", Rate: map[string]string{"USD": "63504.42"}}},
+			Outpoints: map[string]model.Annotation{
+				"aaaa:0": {Label: "test pocket", Fiat: map[string]string{"USD": "0.64"}, Time: "2026-08-03T21:57:31Z"},
+				"bbbb:1": {Fiat: map[string]string{"EUR": "0.50"}},
+				"cccc:2": {},
+			},
+			Addresses: map[string]model.Annotation{"bc1qthird": {Label: "address label"}},
+		},
+	}
+	first, err := SVGBytes(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(first)
+	for _, want := range []string{
+		"test pocket", "wallet tx", "address label",
+		"0.00000780 BTC · 780 sats", "-0.00000150 BTC · -150 sats",
+		"$0.64 USD · 2026-08-03 (wallet-recorded)",
+		"0.50 EUR (wallet-recorded)",
+		"rate $63504.42 USD/BTC (wallet-recorded)",
+		"policy_output_count",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("annotated SVG missing %q", want)
+		}
+	}
+	second, err := SVGBytes(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("annotated SVG output is not deterministic")
+	}
+}
+
 func TestCoverageSVGDisconnectedLayoutDeterministicAndComplete(t *testing.T) {
 	report := model.Report{Graph: model.Graph{Nodes: []model.GraphNode{
 		{ID: "owned", Kind: "output", Owned: true, Label: "selected output"},

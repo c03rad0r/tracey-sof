@@ -114,10 +114,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return app.testNode(ctx, *p)
 	case "pdf":
 		fs, p := common("pdf")
+		unredacted := fs.Bool("unredacted", false, "print identifiers and amounts instead of redacted placeholders")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return app.pdf(ctx, *p)
+		return app.pdf(ctx, *p, *unredacted)
 	case "intake":
 		fs, p := common("intake")
 		maxPages := fs.Int("max-pages", 20, "maximum PDF pages to OCR")

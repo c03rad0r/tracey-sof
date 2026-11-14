@@ -114,6 +114,31 @@ printf '%%PDF-1.7\n%% synthetic offline browser output\n' > "$pdf"
 	}
 }
 
+func TestCoveragePDFUnredactedRequestsRedactOff(t *testing.T) {
+	dir := coverageBrowserDir(t)
+	coverageReportHTML(t, dir)
+	browser := coverageBrowserScript(t, dir, "fake-browser", `
+pdf=
+for argument in "$@"; do
+  case "$argument" in
+    --print-to-pdf=*) pdf=${argument#--print-to-pdf=} ;;
+  esac
+done
+printf '%s\n' "$@" > "$pdf.arguments"
+printf '%%PDF-1.7\n' > "$pdf"
+`)
+	if err := PDFWithOptions(context.Background(), dir, browser, PDFOptions{Unredacted: true}); err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(dir, "report.pdf.arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(arguments), "report.html?redact=0") {
+		t.Errorf("unredacted PDF did not request redact=0: %q", arguments)
+	}
+}
+
 func TestCoveragePDFBrowserFailures(t *testing.T) {
 	writePDF := `
 pdf=
