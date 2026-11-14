@@ -56,31 +56,45 @@ func SelectGraph(graph model.Graph, roots []string) model.Graph {
 	return model.Graph{Nodes: nodes, Edges: edges}
 }
 
-// shortOutpointFile returns a filesystem-safe identifier for a target.
-func shortOutpointFile(utxo model.Target) string {
+// outpointFile returns a filesystem-safe identifier for a target.
+func outpointFile(prefix string, utxo model.Target) string {
 	txid := utxo.TxID
 	if len(txid) > 12 {
 		txid = txid[:12]
 	}
-	return fmt.Sprintf("graph-%s-%d.svg", txid, utxo.Vout)
+	return fmt.Sprintf("%s-%s-%d.svg", prefix, txid, utxo.Vout)
 }
 
-// WriteGraphs writes graph-all.svg plus one focused SVG per current UTXO.
+// WriteGraphs writes hop-layout and chronological graph families: graph-all.svg
+// and graph-time-all.svg plus one focused pair per current UTXO.
 func WriteGraphs(report model.Report, outDir string) ([]string, error) {
-	return writeGraphs(report, outDir, SVGBytes)
+	return writeGraphs(report, outDir, SVGBytes, SVGBytesTime)
 }
 
-func writeGraphs(report model.Report, outDir string, render func(model.Report) ([]byte, error)) ([]string, error) {
-	written := make([]string, 0, len(report.UTXOs)+1)
-	full, err := render(report)
+func writeGraphs(report model.Report, outDir string, render, renderTime func(model.Report) ([]byte, error)) ([]string, error) {
+	written := make([]string, 0, 2*(len(report.UTXOs)+1))
+	write := func(name string, data []byte) error {
+		path := filepath.Join(outDir, name)
+		if err := AtomicWrite(path, data, 0o600); err != nil {
+			return fmt.Errorf("write %s: %w", name, err)
+		}
+		written = append(written, path)
+		return nil
+	}
+	all, err := render(report)
 	if err != nil {
 		return nil, err
 	}
-	allPath := filepath.Join(outDir, "graph-all.svg")
-	if err := AtomicWrite(allPath, full, 0o600); err != nil {
-		return nil, fmt.Errorf("write graph-all.svg: %w", err)
+	if err := write("graph-all.svg", all); err != nil {
+		return nil, err
 	}
-	written = append(written, allPath)
+	allTime, err := renderTime(report)
+	if err != nil {
+		return nil, err
+	}
+	if err := write("graph-time-all.svg", allTime); err != nil {
+		return nil, err
+	}
 	for _, utxo := range report.UTXOs {
 		focused := report
 		focused.Graph = SelectGraph(report.Graph, []string{"out:" + utxo.Key()})
@@ -88,11 +102,16 @@ func writeGraphs(report model.Report, outDir string, render func(model.Report) (
 		if err != nil {
 			return nil, err
 		}
-		path := filepath.Join(outDir, shortOutpointFile(utxo))
-		if err := AtomicWrite(path, data, 0o600); err != nil {
-			return nil, fmt.Errorf("write %s: %w", filepath.Base(path), err)
+		if err := write(outpointFile("graph", utxo), data); err != nil {
+			return nil, err
 		}
-		written = append(written, path)
+		timeData, err := renderTime(focused)
+		if err != nil {
+			return nil, err
+		}
+		if err := write(outpointFile("graph-time", utxo), timeData); err != nil {
+			return nil, err
+		}
 	}
 	return written, nil
 }

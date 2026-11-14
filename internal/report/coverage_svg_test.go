@@ -164,6 +164,85 @@ func TestCoverageSVGWalletLabelsAndFiat(t *testing.T) {
 	}
 }
 
+func TestSVGBytesTimeUsesChronologicalColumns(t *testing.T) {
+	purchaseAmount := int64(500)
+	report := model.Report{
+		Graph: model.Graph{
+			Nodes: []model.GraphNode{
+				{ID: "out-new", Kind: "output", BlockTime: "2024-02-05T10:00:00Z", ValueSats: 10},
+				{ID: "out-old", Kind: "output", BlockTime: "2023-04-20T10:00:00Z", ValueSats: 20},
+				{ID: "out-old-2", Kind: "output", BlockTime: "2023-04-25T10:00:00Z", ValueSats: 25},
+				{ID: "out-purchase", Kind: "output", PurchaseIDs: []string{"purchase-1"}},
+				{ID: "tx-annotation", Kind: "transaction", TxID: strings.Repeat("a", 64)},
+				{ID: "out-outpoint", Kind: "output", Outpoint: "bbbb:1"},
+				{ID: "out-address", Kind: "output", Outpoint: "cccc:2", Address: "bc1qaddress"},
+				{ID: "out-undated", Kind: "output"},
+			},
+			Edges: []model.GraphEdge{{From: "out-new", To: "tx-annotation", Kind: "funded_by"}},
+		},
+		Purchases: []model.Purchase{{ID: "purchase-1", Date: "2024-02-01T20:32:24Z", Provider: "Example Exchange", AmountSats: &purchaseAmount}},
+		Annotations: model.AnnotationFile{
+			Transactions: map[string]model.Annotation{strings.Repeat("a", 64): {Time: "2022-01-15T00:00:00Z"}},
+			Outpoints:    map[string]model.Annotation{"bbbb:1": {Time: "2021-12-01T00:00:00Z"}},
+			Addresses:    map[string]model.Annotation{"bc1qaddress": {Time: "2020-11-01T00:00:00Z"}},
+		},
+	}
+	first, err := SVGBytesTime(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(first)
+	for _, want := range []string{
+		`<text class="column-header" x="50" y="20">undated</text>`,
+		"2020-11", "2021-12", "2022-01", "2023-04", "2024-03", "2024-07",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("time SVG missing %q", want)
+		}
+	}
+	if strings.Index(text, ">2023-04</text>") > strings.Index(text, ">2024-03</text>") {
+		t.Error("columns are not in chronological order")
+	}
+	second, err := SVGBytesTime(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("time SVG output is not deterministic")
+	}
+}
+
+func TestSVGBytesTimeErrors(t *testing.T) {
+	if _, err := SVGBytesTime(model.Report{Graph: model.Graph{Nodes: []model.GraphNode{{ID: "", Kind: "output"}}}}); err == nil {
+		t.Fatal("expected a time layout error")
+	}
+}
+
+func TestLayoutGraphTimeErrors(t *testing.T) {
+	for _, graph := range []model.Graph{
+		{Nodes: []model.GraphNode{{ID: "", Kind: "output"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: ""}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}, {ID: "a", Kind: "output"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}, Edges: []model.GraphEdge{{From: "a", To: "missing", Kind: "input"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}, Edges: []model.GraphEdge{{From: "missing", To: "a", Kind: "input"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}, Edges: []model.GraphEdge{{From: "a", To: "a", Kind: "bogus"}}},
+	} {
+		if _, _, _, _, err := layoutGraphTime(graph, map[string]string{}); err == nil {
+			t.Errorf("expected an error for graph %+v", graph)
+		}
+	}
+	nodes, width, height, headers, err := layoutGraphTime(model.Graph{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}}, map[string]string{"a": "2024-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || width != 380 || height != 240 || len(headers) != 1 {
+		t.Fatalf("layout = %d nodes, %dx%d, %d headers", len(nodes), width, height, len(headers))
+	}
+	if empty, _, _, headers, err := layoutGraphTime(model.Graph{}, nil); err != nil || len(empty) != 0 || len(headers) != 0 {
+		t.Fatalf("empty layout = %v, %v, %v", empty, headers, err)
+	}
+}
+
 func TestCoverageSVGDisconnectedLayoutDeterministicAndComplete(t *testing.T) {
 	report := model.Report{Graph: model.Graph{Nodes: []model.GraphNode{
 		{ID: "owned", Kind: "output", Owned: true, Label: "selected output"},

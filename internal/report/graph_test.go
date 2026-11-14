@@ -52,8 +52,8 @@ func TestWriteGraphsCreatesAllAndFocusedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(written) != 3 {
-		t.Fatalf("wrote %d files, want 3", len(written))
+	if len(written) != 6 {
+		t.Fatalf("wrote %d files, want 6", len(written))
 	}
 	for _, path := range written {
 		info, err := os.Stat(path)
@@ -71,29 +71,43 @@ func TestWriteGraphsCreatesAllAndFocusedFiles(t *testing.T) {
 			t.Errorf("%s is not an SVG", filepath.Base(path))
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "graph-all.svg")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "graph-short-3.svg")); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"graph-all.svg", "graph-time-all.svg", "graph-short-3.svg", "graph-time-short-3.svg"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
 func TestWriteGraphsErrorPaths(t *testing.T) {
 	failing := func(model.Report) ([]byte, error) { return nil, errors.New("render failed") }
-	if _, err := writeGraphs(graphTestReport(), t.TempDir(), failing); err == nil {
+	if _, err := writeGraphs(graphTestReport(), t.TempDir(), failing, failing); err == nil {
 		t.Fatal("expected render error")
 	}
+	ok := func(model.Report) ([]byte, error) { return []byte("<svg/>"), nil }
+	if _, err := writeGraphs(graphTestReport(), t.TempDir(), ok, failing); err == nil {
+		t.Fatal("expected time render error")
+	}
 	calls := 0
-	failsSecond := func(report model.Report) ([]byte, error) {
+	failsSecond := func(model.Report) ([]byte, error) {
 		calls++
 		if calls > 1 {
 			return nil, errors.New("focused render failed")
 		}
 		return []byte("<svg/>"), nil
 	}
-	if _, err := writeGraphs(graphTestReport(), t.TempDir(), failsSecond); err == nil {
+	if _, err := writeGraphs(graphTestReport(), t.TempDir(), failsSecond, ok); err == nil {
 		t.Fatal("expected focused render error")
+	}
+	calls = 0
+	failsSecondTime := func(model.Report) ([]byte, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("focused time render failed")
+		}
+		return []byte("<svg/>"), nil
+	}
+	if _, err := writeGraphs(graphTestReport(), t.TempDir(), ok, failsSecondTime); err == nil {
+		t.Fatal("expected focused time render error")
 	}
 	parent := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(parent, []byte("x"), 0o600); err != nil {
@@ -108,5 +122,19 @@ func TestWriteGraphsErrorPaths(t *testing.T) {
 	}
 	if _, err := WriteGraphs(graphTestReport(), blocked); err == nil {
 		t.Fatal("expected focused atomic write error")
+	}
+	blockedTime := t.TempDir()
+	if err := os.Mkdir(filepath.Join(blockedTime, "graph-time-short-3.svg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteGraphs(graphTestReport(), blockedTime); err == nil {
+		t.Fatal("expected focused time atomic write error")
+	}
+	blockedAllTime := t.TempDir()
+	if err := os.Mkdir(filepath.Join(blockedAllTime, "graph-time-all.svg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteGraphs(graphTestReport(), blockedAllTime); err == nil {
+		t.Fatal("expected time-all atomic write error")
 	}
 }

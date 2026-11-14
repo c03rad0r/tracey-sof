@@ -79,6 +79,7 @@
     viewportWidth: 900,
     viewportHeight: 520,
     layout: null,
+    layoutMode: "hops",
     selectedRoots: new Set(),
     annotations: { transaction: new Map(), address: new Map(), outpoint: new Map() },
     xpubs: new Map(),
@@ -737,7 +738,9 @@
     svg.replaceChildren(
       svgElement("title", { id: "svg-title" }, "Bitcoin UTXO source-of-funds graph"),
       svgElement("desc", { id: "svg-description" },
-        "Selected current outputs are right; exact funding transactions and previous outputs extend left. Blockchain facts and user annotations are identified separately.")
+        state.layoutMode === "time"
+          ? "One column per calendar month, oldest left and newest right. Undated nodes are grouped in the leading column."
+          : "Selected current outputs are right; exact funding transactions and previous outputs extend left. Blockchain facts and user annotations are identified separately.")
     );
     const defs = svgElement("defs");
     const pattern = svgElement("pattern", { id: "graph-grid-pattern", width: 20, height: 20, patternUnits: "userSpaceOnUse" });
@@ -767,18 +770,22 @@
       return;
     }
     const viewport = svgElement("g", { "class": "graph-viewport" });
+    for (const header of asArray(layout.headers)) {
+      viewport.appendChild(svgElement("text", { "class": "column-header", x: header.x, y: header.y }, header.label));
+    }
     const positions = new Map(layout.positions.map(function (position) { return [position.id, position]; }));
     for (const edge of layout.edges) {
       const from = positions.get(edge.from);
       const to = positions.get(edge.to);
       const kind = edge.kind === "funded_by" ? "funded_by" : "input";
-      const startX = from.x;
-      const startY = from.y + from.height / 2;
-      const endX = to.x + to.width;
-      const endY = to.y + to.height / 2;
+      const direction = to.x >= from.x ? 1 : -1;
+      const startX = from.x + direction * from.width / 2;
+      const startY = from.y;
+      const endX = to.x - direction * to.width / 2;
+      const endY = to.y;
       const distance = Math.max(50, Math.abs(startX - endX) / 2);
-      const path = "M " + startX + " " + startY + " C " + (startX - distance) + " " + startY + ", " +
-        (endX + distance) + " " + endY + ", " + endX + " " + endY;
+      const path = "M " + startX + " " + startY + " C " + (startX + direction * distance) + " " + startY + ", " +
+        (endX - direction * distance) + " " + endY + ", " + endX + " " + endY;
       viewport.appendChild(svgElement("path", {
         "class": "edge edge-" + kind, d: path, "marker-end": "url(#arrow-" + kind + ")",
         "aria-label": kind === "funded_by" ? "Output created by funding transaction" : "Transaction spends exact previous output"
@@ -961,12 +968,22 @@
     container.appendChild(diagnostics);
   }
 
+  function nodeDateString(node) {
+    const annotation = nodeAnnotation(node);
+    const purchase = api.uniqueStrings(node.purchase_ids)
+      .map(function (id) { return purchaseById.get(id); })
+      .find(function (entry) { return isRecord(entry); });
+    return annotationDate(annotation) || dateLabel(node.block_time) || (purchase ? dateLabel(purchase.date) : "");
+  }
+
   function renderResults() {
     const visible = api.filterUtxos(allUtxos, state);
     const roots = api.uniqueStrings(visible.map(function (utxo) { return "out:" + utxo.outpoint; }));
     state.selectedRoots = new Set(roots);
     const selectedGraph = api.selectGraph(baseGraph, roots);
-    state.layout = api.layoutGraph(selectedGraph);
+    state.layout = state.layoutMode === "time"
+      ? api.layoutGraphTime(selectedGraph, nodeDateString)
+      : api.layoutGraph(selectedGraph);
     renderSummary();
     renderUtxos(visible);
     renderGraph(state.layout);
@@ -1167,6 +1184,11 @@
     byId("zoom-in").addEventListener("click", function () { changeZoom(1.25); });
     byId("zoom-out").addEventListener("click", function () { changeZoom(0.8); });
     byId("zoom-reset").addEventListener("click", resetView);
+    byId("layout-toggle").addEventListener("click", function () {
+      state.layoutMode = state.layoutMode === "time" ? "hops" : "time";
+      byId("layout-toggle").textContent = state.layoutMode === "time" ? "Layout: time" : "Layout: hops";
+      renderResults();
+    });
     byId("pan-left").addEventListener("click", function () { pan(120, 0); });
     byId("pan-right").addEventListener("click", function () { pan(-120, 0); });
     byId("print-report").addEventListener("click", function () { globalThis.print(); });

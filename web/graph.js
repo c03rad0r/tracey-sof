@@ -104,6 +104,98 @@
     };
   }
 
+  function monthOf(value) {
+    return typeof value === "string" && /^[0-9]{4}-[0-9]{2}/.test(value) ? value.slice(0, 7) : "";
+  }
+
+  function expandMonths(first, last) {
+    const months = [];
+    let year = Number(first.slice(0, 4));
+    let month = Number(first.slice(5, 7));
+    const endYear = Number(last.slice(0, 4));
+    const endMonth = Number(last.slice(5, 7));
+    while (year < endYear || (year === endYear && month <= endMonth)) {
+      months.push(year + "-" + String(month).padStart(2, "0"));
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+    }
+    return months;
+  }
+
+  // layoutGraphTime places one column per calendar month. Unlike the hop
+  // layout, x is strictly chronological (oldest left, newest right); nodes with
+  // no known date are grouped in a leading "undated" column.
+  function layoutGraphTime(graph, dateOf) {
+    const normalized = normalizeGraph(graph);
+    const nodes = normalized.nodes;
+    const edges = normalized.edges;
+    if (nodes.length === 0) {
+      return { nodes: [], edges: [], positions: [], headers: [], width: 0, height: 0, maxDepth: -1 };
+    }
+    const dateFor = typeof dateOf === "function" ? dateOf : function () { return ""; };
+    const dates = new Map();
+    const buckets = new Map();
+    for (const node of nodes) {
+      const value = typeof dateFor(node) === "string" ? dateFor(node) : "";
+      const key = monthOf(value);
+      dates.set(node.id, value);
+      if (!buckets.has(key)) {
+        buckets.set(key, []);
+      }
+      buckets.get(key).push(node);
+    }
+    const dated = Array.from(buckets.keys()).filter(function (key) { return key !== ""; }).sort();
+    let keys = dated;
+    if (dated.length > 0) {
+      keys = expandMonths(dated[0], dated[dated.length - 1]);
+    }
+    if (buckets.has("")) {
+      keys = [""].concat(keys);
+    }
+    const nodeWidth = 300;
+    const nodeHeight = 150;
+    const positions = new Array(nodes.length);
+    const index = new Map(nodes.map(function (node, position) { return [node.id, position]; }));
+    const headers = [];
+    let maxRows = 0;
+    keys.forEach(function (key, column) {
+      const entries = (buckets.get(key) || []).slice().sort(function (left, right) {
+        const leftDate = dates.get(left.id) || "";
+        const rightDate = dates.get(right.id) || "";
+        if (leftDate !== rightDate) {
+          return leftDate.localeCompare(rightDate);
+        }
+        return left.id.localeCompare(right.id);
+      });
+      const x = 190 + column * 340;
+      headers.push({ label: key || "undated", x: x - 140, y: 20 });
+      entries.forEach(function (node, row) {
+        positions[index.get(node.id)] = {
+          id: node.id,
+          depth: column,
+          row: row,
+          x: x,
+          y: 110 + row * 210,
+          width: nodeWidth,
+          height: nodeHeight
+        };
+      });
+      maxRows = Math.max(maxRows, entries.length);
+    });
+    return {
+      nodes: nodes,
+      edges: edges,
+      positions: positions,
+      headers: headers,
+      width: 340 * keys.length + 40,
+      height: Math.max(240, 20 + maxRows * 210),
+      maxDepth: keys.length - 1
+    };
+  }
+
   function layoutGraph(graph) {
     const normalized = normalizeGraph(graph);
     const nodes = normalized.nodes;
@@ -201,6 +293,8 @@
     normalizeGraph: normalizeGraph,
     selectGraph: selectGraph,
     layoutGraph: layoutGraph,
+    layoutGraphTime: layoutGraphTime,
+    monthOf: monthOf,
     formatSats: formatSats,
     formatBtc: formatBtc
   });

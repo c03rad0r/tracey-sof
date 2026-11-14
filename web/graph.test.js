@@ -24,6 +24,8 @@ test("CommonJS export is dependency-free, complete, and immutable", function () 
     "formatBtc",
     "formatSats",
     "layoutGraph",
+    "layoutGraphTime",
+    "monthOf",
     "normalizeGraph",
     "selectGraph",
     "uniqueStrings",
@@ -284,8 +286,57 @@ test("normalizeGraph and selection preserve duplicate edges without causing dupl
   assert.equal(layout.positions[1].depth, 1);
 });
 
-test("formatSats handles integer, negative, zero, and malformed numeric values", function () {
-  assert.equal(graph.formatSats(0), "0 sats");
+test("monthOf extracts calendar months only", function () {
+  assert.equal(graph.monthOf("2024-02-05T12:00:00Z"), "2024-03");
+  assert.equal(graph.monthOf("2024-03"), "2024-03");
+  for (const value of [undefined, null, 202403, "", "05-03-2024"]) {
+    assert.equal(graph.monthOf(value), "");
+  }
+});
+
+test("layoutGraphTime orders columns by month and leads with undated nodes", function () {
+  const source = {
+    nodes: [
+      node("late", { block_time: "2024-02-05T00:00:00Z" }),
+      node("early-b", { block_time: "2023-04-20T00:00:00Z" }),
+      node("early-a", { block_time: "2023-04-02T00:00:00Z" }),
+      node("unknown"),
+      node("unknown-b")
+    ],
+    edges: [edge("early-a", "early-b")]
+  };
+  const dates = new Map([
+    ["late", "2024-02-05"],
+    ["early-b", "2023-04-20"],
+    ["early-a", "2023-04-02"]
+  ]);
+  const layout = graph.layoutGraphTime(source, function (entry) { return dates.get(entry.id) || ""; });
+  assert.deepEqual(layout.headers.map(function (header) { return header.label; })[0], "undated");
+  assert.equal(layout.headers.length, 13);
+  assert.equal(layout.headers[1].label, "2023-04");
+  assert.equal(layout.headers[12].label, "2024-03");
+  assert.equal(layout.width, 340 * 13 + 40);
+  assert.equal(layout.height, 20 + 2 * 210);
+  const positions = new Map(layout.positions.map(function (position) { return [position.id, position]; }));
+  assert.equal(positions.get("unknown").x, 190);
+  assert.equal(positions.get("unknown-b").x, 190);
+  assert.ok(positions.get("unknown").y < positions.get("unknown-b").y);
+  assert.equal(positions.get("early-a").x, 190 + 340);
+  assert.equal(positions.get("late").x, 190 + 12 * 340);
+  assert.equal(positions.get("early-a").y, 110);
+  assert.equal(positions.get("early-b").y, 110 + 210);
+  assert.ok(positions.get("early-a").y < positions.get("early-b").y);
+  const repeat = graph.layoutGraphTime(source, function (entry) { return dates.get(entry.id) || ""; });
+  assert.deepEqual(layout, repeat);
+  assert.deepEqual(graph.layoutGraphTime(source, undefined).headers, [{ label: "undated", x: 50, y: 20 }]);
+  const nonString = graph.layoutGraphTime(source, function (entry) { return entry.id === "late" ? 20240305 : ""; });
+  assert.equal(nonString.headers.length, 1);
+  assert.equal(nonString.headers[0].label, "undated");
+  assert.deepEqual(graph.layoutGraphTime(undefined, undefined),
+    { nodes: [], edges: [], positions: [], headers: [], width: 0, height: 0, maxDepth: -1 });
+});
+
+test("formatSats handles integer, negative, zero, and malformed numeric values", function () {  assert.equal(graph.formatSats(0), "0 sats");
   assert.equal(graph.formatSats(123456789), "123,456,789 sats");
   assert.equal(graph.formatSats(-1234567), "-1,234,567 sats");
   assert.equal(graph.formatSats(Number.MAX_SAFE_INTEGER), "9,007,199,254,740,991 sats");
