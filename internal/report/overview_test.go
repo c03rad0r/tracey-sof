@@ -25,7 +25,7 @@ func overviewTestReport() model.Report {
 		Purchases: []model.Purchase{{ID: "p1", Date: "2023-01-01T00:00:00Z", Height: 50,
 			Provider: "Example Exchange", TxIDs: []string{purchaseTx},
 			Outpoints:  []model.Outpoint{{TxID: purchaseTx, Vout: 1}},
-			AmountSats: &amount, Fiat: &model.Fiat{Amount: "500.00", Currency: "EUR"}}},
+			AmountSats: &amount, Fiat: &model.Fiat{Amount: "123.45", Currency: "EUR"}}},
 		Graph: model.Graph{
 			Nodes: []model.GraphNode{
 				{ID: "tx:" + policy, Kind: "transaction", TxID: policy, TerminalReason: "policy_output_count",
@@ -63,7 +63,7 @@ func TestOverviewHTMLGapsFirstAndNewestBlocksFirst(t *testing.T) {
 	if recentAt < 0 || olderAt < 0 || sourceAt < 0 || undatedAt < 0 || !(recentAt < olderAt && olderAt < sourceAt && sourceAt < undatedAt) {
 		t.Fatalf("chronology order wrong: %d %d %d %d", recentAt, olderAt, sourceAt, undatedAt)
 	}
-	for _, want := range []string{"Inbound exchange payouts", strings.Repeat("b", 64), "Example Exchange", "500.00 EUR", "Current UTXOs", "bc1qtarget"} {
+	for _, want := range []string{"Inbound exchange payouts", strings.Repeat("b", 64), "Example Exchange", "123.45 EUR", "Current UTXOs", "bc1qtarget"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("overview missing %q", want)
 		}
@@ -134,6 +134,7 @@ func TestOverviewNoGapsAndUndatedFallback(t *testing.T) {
 }
 
 func TestOverviewOutboundOnlyTable(t *testing.T) {
+	t.Setenv("SOF_EXCHANGE_LABELS", "exchange a")
 	txid, funding := strings.Repeat("e", 64), strings.Repeat("f", 64)
 	report := model.Report{GeneratedAt: "2026-11-15T00:00:00Z",
 		Chain: model.Chain{BestBlock: strings.Repeat("0", 64), BestHeight: 900}}

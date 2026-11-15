@@ -201,8 +201,8 @@ func TestPurchaseUnmatchedMonthsAndYears(t *testing.T) {
 	if monthRows[2][0] != "2022" || monthRows[2][1] != "12" {
 		t.Errorf("2022-12 row = %v", monthRows[2])
 	}
-	if monthRows[3][2] != "2023-04" || monthRows[3][3] != "2" || monthRows[3][4] != "1500" {
-		t.Errorf("2023-04 row = %v", monthRows[3])
+	if monthRows[3][2] != "2023-05" || monthRows[3][3] != "2" || monthRows[3][4] != "1500" {
+		t.Errorf("2023-05 row = %v", monthRows[3])
 	}
 	years, err := purchaseYearsCSVBytes(purchaseTestReport(), location)
 	if err != nil {

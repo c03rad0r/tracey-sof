@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"tracey-sof/internal/intake"
 	"tracey-sof/internal/model"
@@ -19,20 +21,30 @@ func main() {
 	}
 }
 
+// privateInputsRoot returns the private data tree. The public repository never
+// contains financial inputs; set TRACEY_INPUTS to relocate the tree.
+func privateInputsRoot() string {
+	if root := strings.TrimSpace(os.Getenv("TRACEY_INPUTS")); root != "" {
+		return root
+	}
+	return filepath.Join(os.Getenv("HOME"), "tracey-inputs")
+}
+
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: sof <validate|node-check|discover|trace|report|audit|ui|export|example|test-node|pdf|intake|resolve-intake|review-intake|promote-intake> [flags]")
 	}
 	app := application{stdout: stdout, stderr: stderr}
+	root := privateInputsRoot()
 	common := func(name string) (*flag.FlagSet, *paths) {
 		fs := flag.NewFlagSet(name, flag.ContinueOnError)
 		fs.SetOutput(stderr)
 		p := &paths{}
-		fs.StringVar(&p.dataDir, "data-dir", "./data", "directory containing owned.json, purchases.json and annotations.json")
-		fs.StringVar(&p.cacheDir, "cache-dir", "./cache", "private chain cache directory")
-		fs.StringVar(&p.outDir, "out-dir", "./out", "report output directory")
+		fs.StringVar(&p.dataDir, "data-dir", filepath.Join(root, "data"), "directory containing owned.json, purchases.json and annotations.json")
+		fs.StringVar(&p.cacheDir, "cache-dir", filepath.Join(root, "cache"), "private chain cache directory")
+		fs.StringVar(&p.outDir, "out-dir", filepath.Join(root, "out"), "report output directory")
 		fs.StringVar(&p.fixtures, "fixtures", "./testdata/mainnet", "mainnet fixture directory")
-		fs.StringVar(&p.inbox, "inbox", "./data/inbox", "directory containing receipts, images, CSV, TXT, or JSON sources")
+		fs.StringVar(&p.inbox, "inbox", filepath.Join(root, "data", "inbox"), "directory containing receipts, images, CSV, TXT, or JSON sources")
 		return fs, p
 	}
 	switch args[0] {
@@ -105,8 +117,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	case "bank-import":
 		fs, p := common("bank-import")
 		bankFile := fs.String("bank-file", "", "bank CSV export")
-		merchants := fs.String("merchant", "Example Merchant,Pocket", "comma-separated merchant keywords")
-		provider := fs.String("provider", "Example Exchange", "provider name for created purchase records")
+		merchants := fs.String("merchant", "", "comma-separated merchant keywords (required)")
+		provider := fs.String("provider", "", "provider name for created purchase records (required)")
 		window := fs.Int("window-days", 3, "date window around each on-chain event")
 		apply := fs.Bool("apply", false, "attach matched evidence and create purchase records")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -114,6 +126,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		}
 		if *bankFile == "" {
 			return fmt.Errorf("bank-import requires -bank-file")
+		}
+		if strings.TrimSpace(*merchants) == "" {
+			return fmt.Errorf("bank-import requires -merchant")
+		}
+		if strings.TrimSpace(*provider) == "" {
+			return fmt.Errorf("bank-import requires -provider")
 		}
 		return app.bankImport(*p, *bankFile, *merchants, *provider, *window, *apply)
 	case "statement-requests":

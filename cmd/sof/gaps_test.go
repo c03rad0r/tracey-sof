@@ -10,6 +10,7 @@ import (
 )
 
 func TestPrintGapsAndCLIFlagErrors(t *testing.T) {
+	t.Setenv("SOF_EXCHANGE_LABELS", "exchange a")
 	policy := strings.Repeat("b", 64)
 	outflow := strings.Repeat("d", 64)
 	change := strings.Repeat("e", 64)

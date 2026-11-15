@@ -70,6 +70,7 @@ func gapTestReport() model.Report {
 }
 
 func TestExchangeGapsDetectsInboundPayouts(t *testing.T) {
+	t.Setenv("SOF_EXCHANGE_LABELS", "exchange a")
 	report := gapTestReport()
 	gaps := ExchangeGaps(report)
 	if len(gaps) < 3 {
@@ -122,6 +123,7 @@ func TestExchangeGapsDetectsInboundPayouts(t *testing.T) {
 }
 
 func TestExchangeOutflowsDetectsProviderTransfers(t *testing.T) {
+	t.Setenv("SOF_EXCHANGE_LABELS", "exchange a")
 	report := gapTestReport()
 	outflows := ExchangeOutflows(report)
 	if len(outflows) != 3 {

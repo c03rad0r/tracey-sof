@@ -29,10 +29,10 @@ type ExchangeGap struct {
 }
 
 func exchangeProviders() []string {
+	// Exchange labels are private user assertions. There is deliberately no
+	// built-in provider list in the public repository: set SOF_EXCHANGE_LABELS
+	// (for example in the private node.env) to enable outbound gap detection.
 	raw := strings.TrimSpace(os.Getenv("SOF_EXCHANGE_LABELS"))
-	if raw == "" {
-		raw = "exchange a,exchange b,exchange c"
-	}
 	providers := make([]string, 0)
 	for _, part := range strings.Split(raw, ",") {
 		if value := strings.TrimSpace(part); value != "" {
