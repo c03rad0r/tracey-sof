@@ -4,8 +4,9 @@
 /data/
 /out/
 /cache/
-/tracey-inputs/
 /tmp/
+# Do not ignore an in-repo tracey-inputs tree: it must stay visible so the
+# privacy scan can reject it.
 
 # Local build, dependency, and test state
 /.cache/

@@ -34,7 +34,7 @@ allowed_hosts="127.0.0.1 localhost [::1] www.w3.org bitcoincore.org github.com j
 
 # Personal data patterns. These apply to code, tests, docs, examples and plans.
 personal='/run/media/|/home/(admin|c08rad0r|c03rad0r)/|d24da9f2|Sparda|Pocket App|Pocket Bitcoin|jeffpocket|bull bitcoin|\bbringin\b|dq05|\b(xprv|yprv|zprv|tprv|vprv)[1-9A-HJ-NP-Za-km-z]{50,}\b|\bDE[0-9]{20}\b|\bRF[0-9]{2}[A-Z0-9]{8,}\b'
-private_paths='(^|/)(data|out|cache|node\.env|\.env)(/|$)'
+private_paths='(^|/)(data|out|cache|tracey-inputs|node\.env|\.env)(/|$)'
 
 fail=0
 report() {
@@ -44,7 +44,7 @@ report() {
 
 # Private artifacts must not live inside the public repository, even when
 # gitignored: sharing the directory or a tarball would leak them.
-for path in data out cache node.env .env; do
+for path in data out cache tracey-inputs node.env .env; do
 	if [ -e "$path" ] || [ -L "$path" ]; then
 		report "private path present in the public repository: $path"
 	fi
