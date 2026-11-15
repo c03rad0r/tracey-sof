@@ -35,7 +35,42 @@ make build
 make help
 ```
 
+## Migrating an older in-repo checkout
+
+If an earlier checkout contains `data/`, `out/`, `cache/`, or `node.env`, inspect those files before moving anything. Treat unfamiliar files as potential wallet or purchase evidence; do not move, overwrite, or delete them until you know what they contain. Run this only from the repository root, and make a separate backup first:
+
+```sh
+export TRACEY_INPUTS="${TRACEY_INPUTS:-$HOME/tracey-inputs}"
+install -d -m 700 "$TRACEY_INPUTS"/{data,cache,out,notes,migration-original}
+
+# Preserve any seed/example files already in the private tree.
+for directory in data out cache; do
+  if [ -e "$TRACEY_INPUTS/$directory" ]; then
+    mv -T "$TRACEY_INPUTS/$directory" "$TRACEY_INPUTS/migration-original/seed-$directory"
+  fi
+done
+
+# Move actual inputs into the new private tree.
+for directory in data out cache; do
+  if [ -e "$directory" ]; then
+    mv -T "$directory" "$TRACEY_INPUTS/$directory"
+  fi
+done
+
+# Existing node.env remains readable only by its owner and is not committed.
+if [ -f node.env ]; then
+  mv node.env "$TRACEY_INPUTS/migration-original/node.env"
+fi
+```
+
+Keep any backups outside Git. Check the destination filenames, modes, and credentials before running `make node-check`. If `$TRACEY_INPUTS/node.env` already exists, do not overwrite it with the migrated backup. Continue with step 3 only if you need fresh credentials.
+
+For a new checkout, continue normally; no migration is required.
+
 ## 2. Check Core and datadir paths
+
+The examples below use `/mnt/blockchain` as the mount point. Substitute your actual
+datadir path from `findmnt` or `bitcoin.conf`.
 
 ```sh
 readlink -f /usr/local/bin/bitcoind
@@ -154,6 +189,9 @@ Read `docs/inputs.md` for formats and `docs/bitcoin-core.md` for node settings. 
 - `trace-policy.json`: optional limits. Empty optional stop thresholds are disabled.
 - `annotations.json`: start with an empty template; the loopback UI stores labels there.
 
+Paths written as `out/` and `cache/` in this document mean
+`$TRACEY_INPUTS/out` and `$TRACEY_INPUTS/cache`.
+
 Do not use the ATM operator/payment destination (`paid_to`) address as source-of-funds evidence. An exact purchase txid or received outpoint is stronger evidence than an address or amount heuristic. See `docs/methodology.md`.
 
 Optional intake for receipts and address lists:
@@ -170,6 +208,24 @@ make validate
 ```
 
 OCR candidates always begin `unknown` and require explicit human acceptance. A policy stop is a review flag, not purchase proof.
+
+### Optional bank-matching workflow
+
+Run the matcher once to generate candidates, review `out/bank-matches.csv`, then
+explicitly confirm each reviewed `kind|ID` key. `APPLY=1` without `CONFIRM`
+rejects the command rather than attaching evidence from a heuristic match.
+
+```sh
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv"
+# Review the generated candidate list and amounts, then:
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv" \
+  APPLY=1 CONFIRM="purchase|your-purchase-id"
+```
+
+Merchant and date matching alone only proposes candidates. A mismatch with an
+existing expected fiat amount is not silently replaced. After confirmation, run
+`make audit` so the new purchase evidence is applied to the ancestry, then
+review `out/statement-requests.csv` and `out/overview.pdf`.
 
 ## 7. Validate, trace, and review
 
@@ -197,14 +253,21 @@ Check every file before sharing. `accountant.zip` can contain addresses, xpubs, 
 ```sh
 make verify         # Offline tests, coverage, privacy and full-history leak scans
 make leak-check     # Scan every git ref for personal data and private paths
-make release-check # The above plus public-fixture checks through your Core node
+make release-check  # The above plus public-fixture checks through your Core node
 ```
 
-Network dependencies: runtime transaction queries go only to the configured Core node. `setup`/`vendor` may fetch Go modules; `provision` fetches public packages; `core-download` uses `bitcoincore.org`. No transaction explorer or analytics service is used. Privileged install targets are not required for daily reporting.
+`make leak-check` scans every git ref, and `make verify` includes it. The clean
+history passes this gate. Network dependencies: runtime transaction queries go
+only to the configured Core node. `setup`/`vendor` may fetch Go modules;
+`provision` fetches public packages; `core-download` uses `bitcoincore.org`. No
+transaction explorer or analytics service is used. Privileged install targets
+are not required for daily reporting.
 
 ## 9. Safe disconnection of the blockchain SSD
 
-Do not unplug `/dev/sdX` while Core is running or its filesystem is mounted. Stop and unmount it first:
+Do not unplug the drive while Core is running or its filesystem is mounted. Stop
+and unmount it first. Substitute your actual mount point (`/mnt/blockchain` below)
+and block device (`/dev/sdX`) from `findmnt` and `lsblk`:
 
 ```sh
 cd ~

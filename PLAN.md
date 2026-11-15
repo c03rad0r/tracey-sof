@@ -1,6 +1,6 @@
 # Source-of-Funds UTXO Provenance Plan
 
-Last updated: 2026-11-12
+Last updated: 2026-11-15
 
 This file is the implementation plan and living checklist for this project. Update it whenever scope, architecture, commands, or completion status changes. A checked item means both its implementation and relevant verification are complete.
 
@@ -121,7 +121,7 @@ make release-check
 
 - [x] **P5.1** Add documented immutable real-mainnet fixtures, including the block-170 transfer `f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16`, its coinbase parent, and representative multi-input/segwit cases.
 - [x] **P5.2** Cover unit, RPC, malformed input, graph, matching, cache, annotation, report, security, UI, and CLI behavior with automated tests.
-- [x] **P5.3** Enforce 100% statement and branch coverage for first-party Go and JavaScript analysis modules; browser integration tests supplement coverage rather than substitute for it. **Verified on 2026-11-11 after purchase intake: Go 100.00% (3131/3131 statements); JavaScript 100% statement/branch/function/line.** No unmeasured control-flow coverage metric is claimed for Go.
+- [x] **P5.3** Enforce 100% statement and branch coverage for first-party Go and JavaScript analysis modules; browser integration tests supplement coverage rather than substitute for it. **Verified on 2026-11-15 after archive merge: Go 100.00% (4506/4506 statements); JavaScript 100% statement/branch/function/line.** No unmeasured control-flow coverage metric is claimed for Go.
 - [x] **P5.4** Run read-only tests against a real Core node where available, and record any genuinely unavailable external validation explicitly.
 - [x] **P5.5** Generate and inspect offline HTML, SVG, PDF, and accountant artifacts; assert no third-party requests.
 - [x] **P5.6** Require `make release-check` to pass before declaring the project release-qualified. **A development snapshot was published to <https://github.com/c03rad0r/tracey-sof> on `main` at commit `0cb5b1255dd92d84155d0e21734dbc6601f4eca4`.** The completed trace-policy follow-up (`tracey-sof/0.2.0`) passed the full release gate and was authorized for commit/push on 2026-11-11. The purchase-intake follow-up (`tracey-sof/0.3.0`) also passed the live release gate. No release tag has been created.
@@ -175,7 +175,20 @@ make release-check
 - [ ] **R11** Append the generated `rpcauth` line to the node's `bitcoin.conf`, enable `bitcoind` for reboot, and restart it. **Requires sudo access to the `admin` datadir.**
 - [ ] **R12** Verify chain/index synchronization and run `make node-check` with the new local RPC credentials.
 
-### 10. Explicitly deferred
+### 10. Reviewed archive merge and evidence hardening
+
+- [x] **M1** Integrate the reviewed non-Git archive deltas for private-input relocation, BIP-329 labels, chronology/overview, graph readability, statements, bank matching, and privacy checks without importing `.git` or generated/private files.
+- [x] **M2** Preserve explicit unredacted output for local review while retaining a redacted-sharing switch and prominent embedded-data warnings.
+- [x] **M3** Replace float-based bank amount parsing with exact decimal parsing, bounded reads, and clear malformed-CSV errors.
+- [x] **M4** Require corroboration or explicit human confirmation before bank matches create purchase records or fiat/provenance evidence.
+- [x] **M5** Scope provider/exchange labels to relevant report targets instead of exporting them to every recipe.
+- [x] **M6** Keep the blocking full-history privacy scan (`make leak-check`) in `make verify`, and reject an in-repo `tracey-inputs` tree in both the working tree and history.
+- [x] **M7** Document migration to `$TRACEY_INPUTS` without overwriting current credentials, receipts, or cached trace data.
+- [x] **M8** Add focused tests for merge coverage, exact fiat parsing, confirmation, redaction behavior, label environment scoping, and sanitization. **The `$TRACEY_INPUTS` migration procedure preserves destination inputs and seed/example files under `migration-original`; no private data is committed.**
+- [x] **M9** Run the complete offline gate, Ansible/shell checks, and live-node release verification, and update `HANDOVER.md`, `docs/verification.md`, and this checklist. **`verify`, `ansible-check`, `shellcheck`, and `release-check` passed on 2026-11-15. Go coverage: 4506/4506 statements; JS: 100% statement/branch/function/line.**
+- [ ] **M10** Publish the verified changes on the clean history (`7a5a3c0`), then let the owner inspect and fast-forward. **Prepared on `clean-main`; not yet published.**
+
+### 11. Explicitly deferred
 
 - [ ] Historical spent-address discovery when no current UTXO is supplied.
 - [ ] Self-hosted Esplora adapter.

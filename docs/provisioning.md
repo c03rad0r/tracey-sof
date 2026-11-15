@@ -347,7 +347,7 @@ Rollback by pointing the `/usr/local/bin` symlinks back to the previous version,
 
 ## Current host observation
 
-The blockchain drive is mounted, `bitcoind` is running from `/mnt/blockchain`, and the verifier installed **Bitcoin Core 32.1** under `/opt/bitcoin-core/32.1`. The `bitcoin-cli` binary reports v32.1.0 and the `bitcoind.service` restart result is successful. The systemd unit is currently disabled and must be enabled if it should start at boot.
+The blockchain drive is mounted at `/mnt/blockchain` (substitute your own datadir path), `bitcoind` is running from that datadir, and the verifier installed **Bitcoin Core 32.1** under `/opt/bitcoin-core/32.1`. The `bitcoin-cli` binary reports v32.1.0 and the `bitcoind.service` restart result is successful. The systemd unit is currently disabled and must be enabled if it should start at boot.
 
 The 32.1 archive is GPG-verified against official builder key `152812300785C96444D3334D17565732E08E5E41` (`achow101`); the tarball SHA-256 is `61545c17c3120fb7412f896d248b11993af04ec8817aad3649c55b2afb044963`. The `.verified` marker is present.
 
