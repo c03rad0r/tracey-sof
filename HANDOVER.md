@@ -195,7 +195,8 @@ Check every file before sharing. `accountant.zip` can contain addresses, xpubs, 
 ## 8. Optional verification
 
 ```sh
-make verify         # Offline tests and privacy checks
+make verify         # Offline tests, coverage, privacy and full-history leak scans
+make leak-check     # Scan every git ref for personal data and private paths
 make release-check # The above plus public-fixture checks through your Core node
 ```
 

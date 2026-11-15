@@ -7,8 +7,11 @@ make setup
 make test
 make coverage
 make privacy-check
+make leak-check
 make example
 ```
+
+`make leak-check` scans every git ref for private paths, host usernames, wallet fingerprints, IBAN/SEPA identifiers, provider names, and prohibited endpoints. `make verify` runs the full offline gate including both privacy scans. JavaScript coverage requires Node 22+; set `NODE=/path/to/node` if the default is older.
 
 `make test` does not query a chain service or use wallet data. It includes raw-mainnet fixture normalization, provenance behavior, fake-Core RPC tests, JSON/evidence tests, report/ZIP checks, and real Chromium report rendering. Browser artifacts are created under the project `.cache` directory because Chromium snap packages may not be able to read arbitrary `/tmp` paths.
 
