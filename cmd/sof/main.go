@@ -89,6 +89,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return app.ui(ctx, *p)
+	case "overview":
+		fs, p := common("overview")
+		noPDF := fs.Bool("no-pdf", false, "write only overview.html")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.overview(ctx, *p, *noPDF)
 	case "graphs":
 		fs, p := common("graphs")
 		if err := fs.Parse(args[1:]); err != nil {

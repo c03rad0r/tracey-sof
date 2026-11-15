@@ -337,3 +337,46 @@ func TestCoverageBundleBankMatchesReadError(t *testing.T) {
 		t.Fatal("directory bank-matches.csv accepted")
 	}
 }
+
+func TestCoverageBundleOptionalOverview(t *testing.T) {
+	dataDir, outDir, purchases, _ := coverageBundleFixture(t)
+	html := []byte("<html>overview</html>\n")
+	pdf := []byte("%PDF-1.7\noverview\n")
+	coverageWriteFile(t, filepath.Join(outDir, "overview.html"), html)
+	coverageWriteFile(t, filepath.Join(outDir, "overview.pdf"), pdf)
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := os.ReadFile(filepath.Join(outDir, "accountant.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, contents := coverageReadZIP(t, archive)
+	if string(contents["overview.html"]) != string(html) || string(contents["overview.pdf"]) != string(pdf) {
+		t.Errorf("overview entries missing or changed: %q / %q", contents["overview.html"], contents["overview.pdf"])
+	}
+
+	for _, name := range []string{"overview.html", "overview.pdf"} {
+		if err := os.Remove(filepath.Join(outDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err != nil {
+		t.Fatal(err)
+	}
+	archive, err = os.ReadFile(filepath.Join(outDir, "accountant.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, contents = coverageReadZIP(t, archive)
+	if _, exists := contents["overview.pdf"]; exists {
+		t.Error("missing overview should not be bundled")
+	}
+
+	if err := os.Mkdir(filepath.Join(outDir, "overview.pdf"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err == nil {
+		t.Fatal("directory overview.pdf accepted")
+	}
+}

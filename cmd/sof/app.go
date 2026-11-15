@@ -376,6 +376,31 @@ func (a application) graphs(_ context.Context, p paths) error {
 	return nil
 }
 
+func (a application) overview(ctx context.Context, p paths, noPDF bool) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	cache, err := bank.LoadCache(filepath.Join(p.cacheDir, "bank-matches.json"))
+	if err != nil {
+		return err
+	}
+	if err := reportfiles.WriteOverview(report, cache, p.outDir); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "overview.html"))
+	if noPDF {
+		return nil
+	}
+	pdfCtx, cancel := context.WithTimeout(ctx, reportfiles.PDFTimeout())
+	defer cancel()
+	if err := reportfiles.PrintHTML(pdfCtx, p.outDir, "overview.html", "overview.pdf", env("CHROMIUM"), reportfiles.PDFOptions{Unredacted: true}); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "overview.pdf"))
+	return nil
+}
+
 func (a application) writeStatementRequests(p paths, report model.Report) error {
 	cache, err := bank.LoadCache(filepath.Join(p.cacheDir, "bank-matches.json"))
 	if err != nil {

@@ -26,6 +26,11 @@ func PDF(ctx context.Context, outDir, browser string) error {
 
 // PDFWithOptions renders report.html, optionally with identifiers visible.
 func PDFWithOptions(ctx context.Context, outDir, browser string, options PDFOptions) error {
+	return PrintHTML(ctx, outDir, "report.html", "report.pdf", browser, options)
+}
+
+// PrintHTML renders one generated HTML file into a PDF in the same directory.
+func PrintHTML(ctx context.Context, outDir, htmlName, pdfName, browser string, options PDFOptions) error {
 	absoluteOut, err := filepath.Abs(outDir)
 	if err != nil {
 		return fmt.Errorf("resolve report output directory: %w", err)
@@ -42,16 +47,16 @@ func PDFWithOptions(ctx context.Context, outDir, browser string, options PDFOpti
 	if browser == "" {
 		return fmt.Errorf("Chromium is required for PDF output; set CHROMIUM to a local executable")
 	}
-	if _, err := os.Stat(filepath.Join(outDir, "report.html")); err != nil {
-		return fmt.Errorf("report.html is required before PDF export: %w", err)
+	if _, err := os.Stat(filepath.Join(outDir, htmlName)); err != nil {
+		return fmt.Errorf("%s is required before PDF export: %w", htmlName, err)
 	}
 	profile, err := os.MkdirTemp(outDir, ".chromium-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(profile)
-	pdfPath := filepath.Join(outDir, "report.pdf")
-	htmlLocation := &url.URL{Scheme: "file", Path: filepath.Join(outDir, "report.html")}
+	pdfPath := filepath.Join(outDir, pdfName)
+	htmlLocation := &url.URL{Scheme: "file", Path: filepath.Join(outDir, htmlName)}
 	if options.Unredacted {
 		htmlLocation.RawQuery = ""
 	} else {

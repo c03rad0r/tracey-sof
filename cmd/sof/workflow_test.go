@@ -135,6 +135,13 @@ func TestCLINodeDiscoverTraceReportAndExport(t *testing.T) {
 	if output := invoke(cliCommandArguments("statement-requests", p)); !strings.Contains(output, "bank evidence matched:") {
 		t.Fatalf("statement-requests output = %q", output)
 	}
+	overviewOutput := invoke(cliCommandArguments("overview", p, "-no-pdf"))
+	if !strings.Contains(overviewOutput, "overview.html") {
+		t.Fatalf("overview output = %q", overviewOutput)
+	}
+	if _, err := os.Stat(filepath.Join(p.outDir, "overview.html")); err != nil {
+		t.Fatal(err)
+	}
 	structuredOnly := application{stdout: &stdout, stderr: &stderr}
 	stdout.Reset()
 	if err := structuredOnly.report(ctx, p, false, false, false); err != nil {

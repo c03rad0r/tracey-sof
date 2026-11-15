@@ -142,6 +142,9 @@ audit: build ## Validate, discover, trace, and generate all reports
 ui: build ## Serve reports and local annotations on loopback
 	$(SOF) ui -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
 
+overview: build ## One PDF/HTML overview: gaps first, blocks newest to oldest
+	$(SOF) overview -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
+
 graphs: build ## Write graph-all.svg and one focused SVG per current UTXO
 	$(SOF) graphs -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
 

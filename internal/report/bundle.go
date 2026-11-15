@@ -169,6 +169,18 @@ func bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir s
 	} else if !os.IsNotExist(err) {
 		return err
 	}
+	// The printable overview is optional so that export does not need a
+	// browser; include it whenever the user generated it.
+	for _, name := range []string{"overview.html", "overview.pdf"} {
+		data, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		files[name] = data
+	}
 	files["manifest.sha256"] = manifest(files)
 	data, err := archive(files)
 	if err != nil {
