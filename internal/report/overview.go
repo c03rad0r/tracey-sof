@@ -27,9 +27,14 @@ type overviewEvent struct {
 	valueSats  int64
 	fiat       string
 	targets    []string
+	flags      []string
 }
 
 func overviewEvents(report model.Report) []overviewEvent {
+	return overviewEventsWith(report, ExchangeGaps(report), ExchangeOutflows(report))
+}
+
+func overviewEventsWith(report model.Report, inbound, outbound []ExchangeGap) []overviewEvent {
 	purchases := map[string]model.Purchase{}
 	byOutpoint := map[string]model.Purchase{}
 	for _, purchase := range report.Purchases {
@@ -38,6 +43,9 @@ func overviewEvents(report model.Report) []overviewEvent {
 			byOutpoint[outpoint.String()] = purchase
 		}
 	}
+	utxoOutpoints, utxoTxids := currentUTXOIndex(report)
+	inboundTxids, inboundOutpoints := gapIndex(inbound)
+	outboundTxids, _ := gapIndex(outbound)
 	events := make([]overviewEvent, 0, len(report.Graph.Nodes)+len(report.Purchases))
 	for _, node := range report.Graph.Nodes {
 		if node.Kind == "output" && len(node.PurchaseIDs) > 0 {
@@ -56,6 +64,7 @@ func overviewEvents(report model.Report) []overviewEvent {
 				event.height = purchase.Height
 			}
 		}
+		event.flags = overviewFlags(event, utxoOutpoints, utxoTxids, inboundTxids, inboundOutpoints, outboundTxids)
 		events = append(events, event)
 	}
 	for _, purchase := range report.Purchases {
@@ -71,6 +80,7 @@ func overviewEvents(report model.Report) []overviewEvent {
 		if purchase.Fiat != nil {
 			event.fiat = purchase.Fiat.Amount + " " + purchase.Fiat.Currency
 		}
+		event.flags = overviewFlags(event, utxoOutpoints, utxoTxids, inboundTxids, inboundOutpoints, outboundTxids)
 		events = append(events, event)
 	}
 	sort.SliceStable(events, func(i, j int) bool {
@@ -92,6 +102,45 @@ func overviewEvents(report model.Report) []overviewEvent {
 	return events
 }
 
+func currentUTXOIndex(report model.Report) (map[string]bool, map[string]bool) {
+	outpoints := make(map[string]bool, len(report.UTXOs))
+	txids := make(map[string]bool, len(report.UTXOs))
+	for _, target := range report.UTXOs {
+		outpoints[target.Key()] = true
+		txids[target.TxID] = true
+	}
+	return outpoints, txids
+}
+
+func gapIndex(rows []ExchangeGap) (map[string]bool, map[string]bool) {
+	txids := make(map[string]bool, len(rows))
+	outpoints := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		txids[row.TxID] = true
+		outpoints[row.Outpoint] = true
+	}
+	return txids, outpoints
+}
+
+// overviewFlags marks the rows that explain the chronology: current UTXOs and
+// the transactions that the evidence-gap sections ask the reader to resolve.
+func overviewFlags(event overviewEvent, utxoOutpoints, utxoTxids, inboundTxids, inboundOutpoints, outboundTxids map[string]bool) []string {
+	flags := make([]string, 0, 3)
+	if event.outpoint != "" && utxoOutpoints[event.outpoint] {
+		flags = append(flags, "unspent")
+	}
+	if event.kind == "transaction" && event.txid != "" && utxoTxids[event.txid] {
+		flags = append(flags, "funds unspent output")
+	}
+	if (event.txid != "" && inboundTxids[event.txid]) || (event.outpoint != "" && inboundOutpoints[event.outpoint]) {
+		flags = append(flags, "inbound gap")
+	}
+	if event.txid != "" && outboundTxids[event.txid] {
+		flags = append(flags, "outbound gap")
+	}
+	return flags
+}
+
 func overviewHTML(report model.Report, cache bank.Cache) []byte {
 	var out strings.Builder
 	out.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local audit overview</title><style>
@@ -111,6 +160,7 @@ code { font-family: ui-monospace, monospace; font-size: 8pt; word-break: break-a
 .warn { background: #fff6e8; border: 1px solid #d79a2b; padding: 2mm; margin: 2mm 0; }
 .muted { color: #536171; }
 td.num { text-align: right; white-space: nowrap; }
+td.status { font-weight: 600; }
 </style></head><body>`)
 	out.WriteString("<h1>Local audit overview</h1>")
 	out.WriteString(fmt.Sprintf(`<p class="muted">Generated %s · chain main · block %s (%d) · %d current UTXOs · %s sats</p>`,
@@ -154,7 +204,8 @@ td.num { text-align: right; white-space: nowrap; }
 
 	out.WriteString(`<h2>Chronology — newest block first, sources at the bottom</h2>`)
 	out.WriteString(`<p class="muted">One section per block height present in the trace. Purchases appear as source rows. Values are exact sats; fiat is wallet/bank-recorded when available.</p>`)
-	events := overviewEvents(report)
+	out.WriteString(`<p class="muted"><strong>Status:</strong> <strong>unspent</strong> = current UTXO that is still unspent; <strong>funds unspent output</strong> = transaction creates a current UTXO; <strong>inbound gap</strong> = purchase/withdrawal evidence needed; <strong>outbound gap</strong> = sale/deposit evidence needed. These are the same transactions listed in the evidence-gap sections above.</p>`)
+	events := overviewEventsWith(report, inbound, outbound)
 	currentHeight := int64(-1)
 	for _, event := range events {
 		if event.height != currentHeight {
@@ -177,7 +228,7 @@ td.num { text-align: right; white-space: nowrap; }
 				label += " · " + date
 			}
 			out.WriteString(fmt.Sprintf(`<h3>%s</h3>`, html.EscapeString(label)))
-			out.WriteString(`<table><thead><tr><th style="width:11%">Type</th><th style="width:26%">Identifier</th><th style="width:11%">Sats</th><th style="width:10%">Fiat</th><th style="width:21%">Label / provider</th><th style="width:21%">Address / boundary</th></tr></thead><tbody>`)
+			out.WriteString(`<table><thead><tr><th style="width:12%">Type</th><th style="width:21%">Identifier</th><th style="width:9%">Sats</th><th style="width:7%">Fiat</th><th style="width:15%">Status</th><th style="width:17%">Label / provider</th><th style="width:19%">Address / boundary</th></tr></thead><tbody>`)
 		}
 		identifier := event.outpoint
 		if identifier == "" {
@@ -201,9 +252,10 @@ td.num { text-align: right; white-space: nowrap; }
 		if event.valueSats > 0 {
 			value = strconv.FormatInt(event.valueSats, 10)
 		}
-		out.WriteString(fmt.Sprintf(`<tr><td>%s</td><td><code>%s</code></td><td class="num">%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>`,
+		status := strings.Join(event.flags, " · ")
+		out.WriteString(fmt.Sprintf(`<tr><td>%s</td><td><code>%s</code></td><td class="num">%s</td><td>%s</td><td class="status">%s</td><td>%s</td><td><code>%s</code></td></tr>`,
 			html.EscapeString(event.kind), html.EscapeString(shortID(identifier)), value,
-			html.EscapeString(event.fiat), html.EscapeString(label), html.EscapeString(shortID(detail))))
+			html.EscapeString(event.fiat), html.EscapeString(status), html.EscapeString(label), html.EscapeString(shortID(detail))))
 	}
 	if currentHeight != -1 {
 		out.WriteString(`</tbody></table>`)

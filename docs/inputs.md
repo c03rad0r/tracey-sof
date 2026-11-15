@@ -435,6 +435,12 @@ assertions; verify them against exchange statements.
    rows that are the sources of the sats. Undated rows come last.
 3. **Current UTXOs** with documentation and trace status.
 
+The chronology's **Status** column marks `unspent` for a current UTXO output,
+`funds unspent output` for a transaction that creates a current UTXO, and
+`inbound gap` / `outbound gap` for the same transactions listed in the evidence
+gap sections. A row can carry more than one marker, for example
+`funds unspent output · outbound gap`.
+
 Purchases appear once as source rows; an output that is itself a purchase is not
 duplicated. Boundary outputs are collapsed as in the graph exports, so the
 document stays readable. Type sizes are print-normal (10 pt body, 9 pt tables);

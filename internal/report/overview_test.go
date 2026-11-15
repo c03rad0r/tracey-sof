@@ -63,7 +63,7 @@ func TestOverviewHTMLGapsFirstAndNewestBlocksFirst(t *testing.T) {
 	if recentAt < 0 || olderAt < 0 || sourceAt < 0 || undatedAt < 0 || !(recentAt < olderAt && olderAt < sourceAt && sourceAt < undatedAt) {
 		t.Fatalf("chronology order wrong: %d %d %d %d", recentAt, olderAt, sourceAt, undatedAt)
 	}
-	for _, want := range []string{"Inbound exchange payouts", strings.Repeat("b", 64), "Example Exchange", "123.45 EUR", "Current UTXOs", "bc1qtarget"} {
+	for _, want := range []string{"Inbound exchange payouts", strings.Repeat("b", 64), "Example Exchange", "123.45 EUR", "Current UTXOs", "bc1qtarget", ">unspent<", ">funds unspent output<", ">inbound gap<", "Status:"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("overview missing %q", want)
 		}
@@ -137,7 +137,9 @@ func TestOverviewOutboundOnlyTable(t *testing.T) {
 	t.Setenv("SOF_EXCHANGE_LABELS", "exchange a")
 	txid, funding := strings.Repeat("e", 64), strings.Repeat("f", 64)
 	report := model.Report{GeneratedAt: "2026-11-15T00:00:00Z",
-		Chain: model.Chain{BestBlock: strings.Repeat("0", 64), BestHeight: 900}}
+		Chain:   model.Chain{BestBlock: strings.Repeat("0", 64), BestHeight: 900},
+		UTXOs:   []model.Target{{TxID: txid, Vout: 0, ValueSats: 5000}},
+		Summary: model.Summary{TotalUTXOs: 1, TotalSats: 5000}}
 	report.Graph.Nodes = []model.GraphNode{
 		{ID: "tx:" + txid, Kind: "transaction", TxID: txid, Label: "exchange a sale",
 			BlockTime: "2026-08-15T12:00:00Z", Height: 958000},
@@ -152,7 +154,7 @@ func TestOverviewOutboundOnlyTable(t *testing.T) {
 	if strings.Contains(text, "Inbound exchange payouts") {
 		t.Error("inbound table rendered without inbound gaps")
 	}
-	for _, want := range []string{"bc1qsale", "exchange a sale", "958,000"} {
+	for _, want := range []string{"bc1qsale", "exchange a sale", "958,000", ">outbound gap<", "funds unspent output · outbound gap"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("outbound overview missing %q", want)
 		}

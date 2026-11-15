@@ -42,6 +42,10 @@ One printable document, `$TRACEY_INPUTS/out/overview.pdf`, that can be read with
 - [x] Drop the impossible error return from `overviewHTML` (dead branch).
 - [x] Raise print sizes: body 10pt, tables 9pt, code 8pt, wider padding.
 - [x] Keep `break-inside: avoid` on rows and `break-after: avoid` on headings.
+- [x] Add a chronology **Status** column: `unspent` for current UTXOs,
+      `funds unspent output` for their funding transactions, and
+      `inbound gap`/`outbound gap` for the transactions listed in the gaps
+      sections. Combined markers are joined with `·`.
 
 ### B. Tests and the 100% coverage gate
 
