@@ -46,6 +46,7 @@ type MatchRecord struct {
 	AmountSats    int64  `json:"amount_sats,omitempty"`
 	Height        int64  `json:"height,omitempty"`
 	Status        string `json:"status"`
+	Confirmed     bool   `json:"confirmed,omitempty"`
 	BankDate      string `json:"bank_date,omitempty"`
 	BankReference string `json:"bank_reference,omitempty"`
 	BankAmountEUR string `json:"bank_amount_eur,omitempty"`
@@ -53,6 +54,23 @@ type MatchRecord struct {
 }
 
 func (m MatchRecord) Key() string { return m.Kind + "|" + m.ID }
+
+// ParseConfirmationIDs parses an explicit human-reviewed event list. Bank
+// matches remain candidates unless their exact kind|ID key is confirmed.
+func ParseConfirmationIDs(value string) (map[string]bool, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, fmt.Errorf("bank match application requires -confirm kind|id[,kind|id...]")
+	}
+	confirmed := map[string]bool{}
+	for _, part := range strings.Split(value, ",") {
+		kind, id, found := strings.Cut(strings.TrimSpace(part), "|")
+		if !found || id == "" || (kind != "purchase" && kind != "inbound_payout") {
+			return nil, fmt.Errorf("invalid confirmation %q; expected purchase|id or inbound_payout|id", part)
+		}
+		confirmed[kind+"|"+id] = true
+	}
+	return confirmed, nil
+}
 
 // Cache is written below the project cache directory after a bank import.
 type Cache struct {

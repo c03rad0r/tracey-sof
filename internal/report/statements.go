@@ -68,8 +68,10 @@ func recordsByKey(cache bank.Cache) map[string]bank.MatchRecord {
 
 func statementStatus(record bank.MatchRecord, exists bool) (status, action string) {
 	switch {
-	case exists && record.Status == "matched":
+	case exists && record.Status == "matched" && record.Confirmed:
 		return "matched_bank_evidence", "none"
+	case exists && record.Status == "matched":
+		return "candidate_needs_confirmation", "corroborate amount or explicitly confirm before applying"
 	case exists && record.Status == "ambiguous":
 		return "ambiguous_bank_match", "review bank candidates"
 	default:
@@ -105,14 +107,14 @@ func writeStatementRequestsCSV(writer reportCSVWriter, report model.Report, cach
 		}
 		fiatAmount := event.FiatAmount
 		fiatCurrency := event.FiatCurrency
-		if exists && record.Status == "matched" {
+		if exists && record.Status == "matched" && record.Confirmed {
 			fiatAmount, fiatCurrency = record.BankAmountEUR, record.BankCurrency
 		}
 		if action == "request physical statement" && month != "" {
 			action = "request physical statement for " + month
 		}
 		sha := ""
-		if exists && record.Status == "matched" {
+		if exists && record.Status == "matched" && record.Confirmed {
 			sha = cache.SHA256
 		}
 		if event.BankEvidence {
@@ -136,18 +138,18 @@ func writeStatementRequestsCSV(writer reportCSVWriter, report model.Report, cach
 
 func writeBankMatchesCSV(writer reportCSVWriter, cache bank.Cache) error {
 	header := []string{"event_type", "event_id", "event_date", "txid", "outpoint",
-		"amount_sats", "status", "bank_booking_date", "bank_amount_eur", "bank_currency",
+		"amount_sats", "status", "confirmed", "bank_booking_date", "bank_amount_eur", "bank_currency",
 		"bank_reference", "evidence_sha256"}
 	if err := writer.Write(header); err != nil {
 		return err
 	}
 	for _, record := range cache.Records {
 		sha := ""
-		if record.Status == "matched" {
+		if record.Status == "matched" && record.Confirmed {
 			sha = cache.SHA256
 		}
 		row := []string{record.Kind, record.ID, record.Date, record.TxID, record.Outpoint,
-			strconv.FormatInt(record.AmountSats, 10), record.Status, record.BankDate,
+			strconv.FormatInt(record.AmountSats, 10), record.Status, strconv.FormatBool(record.Confirmed), record.BankDate,
 			record.BankAmountEUR, record.BankCurrency, record.BankReference, sha}
 		if err := writer.Write(row); err != nil {
 			return err
@@ -170,7 +172,7 @@ func StatementRequestSummary(report model.Report, cache bank.Cache) (int, int) {
 	matched, requests := 0, 0
 	for _, event := range StatementEvents(report) {
 		record, exists := records[event.Key()]
-		if (exists && record.Status == "matched") || event.BankEvidence {
+		if (exists && record.Status == "matched" && record.Confirmed) || event.BankEvidence {
 			matched++
 		} else {
 			requests++

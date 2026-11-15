@@ -238,6 +238,69 @@ func TestTestNodeResolutionFailureStages(t *testing.T) {
 			t.Fatalf("snapshot mismatch = %v", err)
 		}
 	})
+	t.Run("tip advances during test-node", func(t *testing.T) {
+		fake := newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		fake.afterRPC = func(method string, call int) {
+			if method == "getblockchaininfo" && call == 1 {
+				fake.tipOffset = 1
+			}
+		}
+		if err := app.testNode(context.Background(), p); err != nil {
+			t.Fatalf("advanced tip rejected: %v", err)
+		}
+	})
+	t.Run("moving tip is retried", func(t *testing.T) {
+		newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		deps := defaultTestNodeDependencies()
+		calls := 0
+		deps.resolve = func(ctx context.Context, client *core.Client, addresses []string) ([]core.AddressResolution, model.Chain, error) {
+			calls++
+			if calls == 1 {
+				return nil, model.Chain{}, errors.New("chain tip changed during address resolution; rerun for a consistent snapshot")
+			}
+			return client.ResolveAddresses(ctx, addresses)
+		}
+		if err := app.testNodeWith(context.Background(), p, deps); err != nil {
+			t.Fatalf("retryable tip change rejected: %v", err)
+		}
+		if calls != 2 {
+			t.Fatalf("resolution calls = %d", calls)
+		}
+	})
+	t.Run("moving tip retry exhaustion", func(t *testing.T) {
+		newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		deps := defaultTestNodeDependencies()
+		calls := 0
+		deps.resolve = func(context.Context, *core.Client, []string) ([]core.AddressResolution, model.Chain, error) {
+			calls++
+			return nil, model.Chain{}, errors.New("chain tip changed during address resolution; rerun for a consistent snapshot")
+		}
+		if err := app.testNodeWith(context.Background(), p, deps); err == nil {
+			t.Fatal("persistent tip movement accepted")
+		}
+		if calls != 3 {
+			t.Fatalf("resolution calls = %d", calls)
+		}
+	})
+	t.Run("non-tip resolution error is not retried", func(t *testing.T) {
+		newCLIFakeCore(t)
+		p := newCLIPaths(t, false)
+		deps := defaultTestNodeDependencies()
+		calls := 0
+		deps.resolve = func(context.Context, *core.Client, []string) ([]core.AddressResolution, model.Chain, error) {
+			calls++
+			return nil, model.Chain{}, errors.New("address resolution failure")
+		}
+		if err := app.testNodeWith(context.Background(), p, deps); err == nil || !strings.Contains(err.Error(), "address resolution failure") {
+			t.Fatalf("non-tip error = %v", err)
+		}
+		if calls != 1 {
+			t.Fatalf("resolution calls = %d", calls)
+		}
+	})
 	t.Run("transaction resolution error", func(t *testing.T) {
 		fake := newCLIFakeCore(t)
 		p := newCLIPaths(t, false)

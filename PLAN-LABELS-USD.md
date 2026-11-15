@@ -23,18 +23,23 @@ Status: **implemented** — one gaps-first, block-height chronology.
 ## Bank statement ingestion (current)
 
 - [x] Bank CSV parser (UTF-8 BOM, `;`, German amounts/dates, decorative quotes).
-- [x] `make bank-import BANK=… [APPLY=1]`: matches merchant keywords within ±3
+- [x] `make bank-import BANK=… [APPLY=1 CONFIRM=kind|id]`: matches merchant keywords within ±3
       days, stores the CSV as `data/evidence/bank/<name>` with SHA-256, writes
-      `bank-matches.csv` and `statement-requests.csv`.
+      `bank-matches.csv` and `statement-requests.csv`. Candidate matches are not
+      automatically attached; corroboration or explicit human confirmation is required.
 - [x] `statement-requests.csv` placeholders for every purchase and inbound
-      payout without bank evidence; matched rows carry bank date, amount,
+      payout without bank evidence; confirmed rows carry bank date, amount,
       reference and hash. Included in `accountant.zip`.
 - [x] Merchant keywords, provider label and exchange labels are private
       configuration (`MERCHANT`, `PROVIDER`, `SOF_EXCHANGE_LABELS` in
-      `$TRACEY_INPUTS/node.env`); the public repository has no personal values.
-- [x] Matched rows create purchase records with fiat, statement date and bank
-      artifact. A fresh `make audit` stops the trace at those boundaries.
-- [x] Tests: Go coverage 100%, JS 100%, `make verify` green.
+      `$TRACEY_INPUTS/node.env`) and are exported only to evidence-report targets;
+      the public repository and unrelated recipes have no personal values.
+- [x] Confirmed rows create purchase records with fiat, statement date and bank
+      artifact. Existing fiat with a different amount is not overwritten. A
+      fresh `make audit` stops the trace at the new boundary.
+- [x] Tests: Go coverage 100%, JS 100%, `make verify` green, including exact
+      large-amount parsing, quoted/oversized CSV handling, confirmation gating,
+      and provider-label environment scoping.
 
 ## Automated exchange gap lists (current)
 

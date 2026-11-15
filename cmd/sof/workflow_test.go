@@ -126,7 +126,7 @@ func TestCLINodeDiscoverTraceReportAndExport(t *testing.T) {
 	if err := os.WriteFile(bankCSV, []byte(bankData), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bankOutput := invoke(cliCommandArguments("bank-import", p, "-bank-file", bankCSV, "-merchant", "Example Merchant", "-provider", "Example Exchange", "-apply"))
+	bankOutput := invoke(cliCommandArguments("bank-import", p, "-bank-file", bankCSV, "-merchant", "Example Merchant", "-provider", "Example Exchange", "-apply", "-confirm", "purchase|fixture-purchase"))
 	for _, want := range []string{"matched events: 1", "attached bank evidence", "statement-requests.csv"} {
 		if !strings.Contains(bankOutput, want) {
 			t.Errorf("bank-import output %q lacks %q", bankOutput, want)

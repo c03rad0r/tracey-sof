@@ -34,7 +34,7 @@ func TestBankImportBranches(t *testing.T) {
 		writeCLIInputs(t, p, false)
 		saveCLIFixtureTrace(t, p)
 		app := bankCLIApplication()
-		if err := app.bankImport(p, filepath.Join(t.TempDir(), "missing.csv"), "Example Merchant", "Example Exchange", 3, false); err == nil {
+		if err := app.bankImport(p, filepath.Join(t.TempDir(), "missing.csv"), "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
 			t.Fatal("missing bank file accepted")
 		}
 	})
@@ -53,7 +53,7 @@ func TestBankImportBranches(t *testing.T) {
 			saveCLIFixtureTrace(t, p)
 			var stdout, stderr bytes.Buffer
 			app := application{stdout: &stdout, stderr: &stderr}
-			if err := app.bankImport(p, bankFileFixture(t, test.rows), "Example Merchant", "Example Exchange", 3, false); err != nil {
+			if err := app.bankImport(p, bankFileFixture(t, test.rows), "Example Merchant", "Example Exchange", 3, false, ""); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(stdout.String(), test.want) || !strings.Contains(stdout.String(), "review the lists") {
@@ -73,7 +73,7 @@ func TestBankImportBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 		app := bankCLIApplication()
-		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false); err == nil {
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
 			t.Fatal("artifact error accepted")
 		}
 	})
@@ -86,7 +86,7 @@ func TestBankImportBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 		app := bankCLIApplication()
-		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false); err == nil {
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
 			t.Fatal("cache write error accepted")
 		}
 	})
@@ -101,7 +101,7 @@ func TestBankImportBranches(t *testing.T) {
 		}
 		p.outDir = blocked
 		app := bankCLIApplication()
-		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false); err == nil {
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
 			t.Fatal("output write error accepted")
 		}
 	})
@@ -117,7 +117,7 @@ func TestBankImportBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 		app := bankCLIApplication()
-		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false); err == nil {
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
 			t.Fatal("statement write error accepted")
 		}
 	})
@@ -130,7 +130,7 @@ func TestBankImportBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 		app := bankCLIApplication()
-		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true); err == nil {
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true, "purchase|fixture-purchase"); err == nil {
 			t.Fatal("apply load error accepted")
 		}
 	})
@@ -143,7 +143,7 @@ func TestBankImportBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 		app := bankCLIApplication()
-		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true); err == nil {
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true, "purchase|fixture-purchase"); err == nil {
 			t.Fatal("backup error accepted")
 		}
 	})
@@ -158,11 +158,42 @@ func TestBankImportBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer os.Chmod(p.dataDir, 0o700)
-		if err := app.bankImport(p, bank, "Example Merchant", "Example Exchange", 3, true); err == nil {
+		if err := app.bankImport(p, bank, "Example Merchant", "Example Exchange", 3, true, "purchase|fixture-purchase"); err == nil {
 			t.Fatal("save error accepted")
 		}
 	})
 
+	t.Run("confirmation required", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		saveCLIFixtureTrace(t, p)
+		if err := bankCLIApplication().bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true, ""); err == nil {
+			t.Fatal("unconfirmed bank match was applied")
+		}
+	})
+
+	t.Run("confirmed apply", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		saveCLIFixtureTrace(t, p)
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true, "purchase|fixture-purchase"); err != nil {
+			t.Fatalf("confirmed bank import: %v\nstderr: %s", err, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "attached bank evidence: 1 updated purchase(s), 0 new purchase(s)") {
+			t.Fatalf("output = %q", stdout.String())
+		}
+	})
+
+	t.Run("invalid confirmation", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		saveCLIFixtureTrace(t, p)
+		if err := bankCLIApplication().bankImport(p, bankFileFixture(t, "12.01.2009;12.01.2009;Example Merchant;ref;;-100,00;EUR\n"), "Example Merchant", "Example Exchange", 3, true, "bad"); err == nil {
+			t.Fatal("invalid confirmation accepted")
+		}
+	})
 	t.Run("flags", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		if err := run(ctx, []string{"bank-import"}, &stdout, &stderr); err == nil {
@@ -246,22 +277,31 @@ func TestApplyBankEvidenceErrors(t *testing.T) {
 		if err := os.Mkdir(filepath.Join(p.dataDir, "purchases.json.bak"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := bankCLIApplication().applyBankEvidence(p, model.Report{}, bank.Cache{}, "x"); err == nil {
+		cache := bank.Cache{Artifact: "evidence/bank/bank.csv", SHA256: strings.Repeat("a", 64), Records: []bank.MatchRecord{{
+			Kind: "purchase", ID: "fixture-purchase", Status: "matched", Confirmed: true, BankDate: "2009-01-12", BankAmountEUR: "100.00", BankCurrency: "EUR",
+		}}}
+		if err := bankCLIApplication().applyBankEvidence(p, model.Report{}, cache, "x"); err == nil {
 			t.Fatal("backup error accepted")
 		}
 	})
-	t.Run("save error", func(t *testing.T) {
+	t.Run("no corroborated matches", func(t *testing.T) {
 		p := newCLIPaths(t, false)
 		writeCLIInputs(t, p, false)
-		if err := os.WriteFile(filepath.Join(p.dataDir, "purchases.json.bak"), []byte("old"), 0o600); err != nil {
-			t.Fatal(err)
+		cache := bank.Cache{Artifact: "evidence/bank/bank.csv", SHA256: strings.Repeat("a", 64), Records: []bank.MatchRecord{{
+			Kind: "purchase", ID: "fixture-purchase", Status: "matched", BankAmountEUR: "100.00", BankCurrency: "EUR",
+		}}}
+		if err := bankCLIApplication().applyBankEvidence(p, model.Report{}, cache, "x"); err == nil {
+			t.Fatal("unconfirmed bank evidence was applied")
 		}
-		if err := os.Chmod(p.dataDir, 0o500); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Chmod(p.dataDir, 0o700)
-		if err := bankCLIApplication().applyBankEvidence(p, model.Report{}, bank.Cache{}, "x"); err == nil {
-			t.Fatal("save error accepted")
+	})
+	t.Run("save file error", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		cache := bank.Cache{Artifact: "evidence/bank/bank.csv", SHA256: strings.Repeat("a", 64), Records: []bank.MatchRecord{{
+			Kind: "purchase", ID: "fixture-purchase", Status: "matched", Confirmed: true, BankDate: "2009-01-12", BankAmountEUR: "100.00", BankCurrency: "euro",
+		}}}
+		if err := bankCLIApplication().applyBankEvidence(p, model.Report{}, cache, "x"); err == nil {
+			t.Fatal("validated save error accepted")
 		}
 	})
 }

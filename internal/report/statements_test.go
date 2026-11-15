@@ -25,7 +25,7 @@ func statementTestReport() model.Report {
 func TestStatementRequestsAndMatchesCSV(t *testing.T) {
 	report := statementTestReport()
 	cache := bank.Cache{SHA256: strings.Repeat("d", 64), Artifact: "evidence/bank/bank.csv", Records: []bank.MatchRecord{
-		{Kind: "purchase", ID: "p1", Status: "matched", BankDate: "2024-01-02", BankAmountEUR: "123.45", BankCurrency: "EUR", BankReference: "EXAMPLE-REF-001"},
+		{Kind: "purchase", ID: "p1", Status: "matched", Confirmed: true, BankDate: "2024-01-02", BankAmountEUR: "123.45", BankCurrency: "EUR", BankReference: "EXAMPLE-REF-001"},
 		{Kind: "inbound_payout", ID: "amb", Status: "ambiguous"},
 	}}
 	events := StatementEvents(report)
@@ -75,8 +75,8 @@ func TestStatementRequestsAndMatchesCSV(t *testing.T) {
 	if err != nil || len(matchRows) != 3 || matchRows[1][0] != "purchase" {
 		t.Fatalf("match rows = %v, %v", matchRows, err)
 	}
-	if matchRows[1][11] == "" || matchRows[2][11] != "" {
-		t.Errorf("evidence sha should only be set for matched rows: %v", matchRows)
+	if matchRows[1][12] == "" || matchRows[2][12] != "" {
+		t.Errorf("evidence sha should only be set for confirmed matches: %v", matchRows)
 	}
 }
 
@@ -90,7 +90,9 @@ func TestStatementStatusAndNilAmounts(t *testing.T) {
 		exists bool
 		status string
 	}{
-		{bank.MatchRecord{Status: "matched"}, true, "matched_bank_evidence"},
+		{bank.MatchRecord{Status: "matched", Confirmed: true}, true, "matched_bank_evidence"},
+		{bank.MatchRecord{Status: "matched"}, true, "candidate_needs_confirmation"},
+		{bank.MatchRecord{Status: "ambiguous", Confirmed: true}, true, "ambiguous_bank_match"},
 		{bank.MatchRecord{Status: "ambiguous"}, true, "ambiguous_bank_match"},
 		{bank.MatchRecord{}, false, "request_physical_statement"},
 	} {
@@ -98,6 +100,48 @@ func TestStatementStatusAndNilAmounts(t *testing.T) {
 		if status != test.status {
 			t.Errorf("status = %q, want %q", status, test.status)
 		}
+	}
+}
+
+func TestUnconfirmedMatchIsOnlyACandidate(t *testing.T) {
+	report := statementTestReport()
+	cache := bank.Cache{SHA256: strings.Repeat("d", 64), Artifact: "evidence/bank/bank.csv", Records: []bank.MatchRecord{
+		{Kind: "purchase", ID: "p1", Status: "matched", BankDate: "2024-01-02", BankAmountEUR: "999.99", BankCurrency: "EUR", BankReference: "UNREVIEWED"},
+	}}
+	data, err := StatementRequestsCSVBytes(report, cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(string(data))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row []string
+	for _, candidate := range rows[1:] {
+		if candidate[1] == "p1" {
+			row = candidate
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("purchase row missing")
+	}
+	if row[11] != "candidate_needs_confirmation" || row[8] != "123.45" || row[14] != "" {
+		t.Errorf("candidate row leaked unconfirmed evidence: %v", row)
+	}
+	matches, err := BankMatchesCSVBytes(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchRows, err := csv.NewReader(strings.NewReader(string(matches))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matchRows) != 2 || matchRows[1][7] != "false" || matchRows[1][12] != "" {
+		t.Errorf("candidate match row = %v", matchRows)
+	}
+	if matched, _ := StatementRequestSummary(report, cache); matched != 0 {
+		t.Errorf("unconfirmed match counted as evidence: %d", matched)
 	}
 }
 

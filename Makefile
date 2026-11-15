@@ -39,12 +39,16 @@ include $(ENV_FILE)
 export TRACE_MAX_DEPTH TRACE_MAX_TRANSACTIONS SOF_LISTEN SOF_TIMEZONE CHROMIUM
 endif
 
-# Merchant/provider/exchange labels are private configuration. Set them in
-# $(ENV_FILE); there are no personal defaults in this public repository.
+# Merchant/provider/exchange labels are private configuration used only by
+# bank/evidence reporting targets. They are not exposed to unrelated recipes.
 MERCHANT ?=
 PROVIDER ?=
 SOF_EXCHANGE_LABELS ?=
-export MERCHANT PROVIDER SOF_EXCHANGE_LABELS
+BANK_LABEL_TARGETS := bank-import gaps gaps-inflow gaps-outflow gaps-check gaps-check-all report audit overview export ui
+unexport MERCHANT PROVIDER SOF_EXCHANGE_LABELS
+$(BANK_LABEL_TARGETS): export MERCHANT := $(MERCHANT)
+$(BANK_LABEL_TARGETS): export PROVIDER := $(PROVIDER)
+$(BANK_LABEL_TARGETS): export SOF_EXCHANGE_LABELS := $(SOF_EXCHANGE_LABELS)
 
 # Only RPC-using targets inherit Bitcoin node credentials. Keeping these out of
 # unrelated recipes avoids exposing them to package installers, OCR, Chromium,
@@ -172,12 +176,13 @@ graphs: build ## Write graph-all.svg and one focused SVG per current UTXO
 
 BANK ?=
 APPLY ?= 0
+CONFIRM ?=
 
-bank-import: build ## Import a bank CSV, match bank rows, write proof lists
+bank-import: build ## Import reviewed bank matches with explicit confirmations
 	@test -n "$(BANK)" || { echo 'BANK is required (path to a bank CSV export)'; exit 1; }
 	@test -n "$(MERCHANT)" || { echo 'MERCHANT is required; set it in $(ENV_FILE)'; exit 1; }
 	@test -n "$(PROVIDER)" || { echo 'PROVIDER is required; set it in $(ENV_FILE)'; exit 1; }
-	$(SOF) bank-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -bank-file "$(BANK)" -merchant "$(MERCHANT)" -provider "$(PROVIDER)" $(if $(filter 1 true yes,$(APPLY)),-apply,)
+	$(SOF) bank-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -bank-file "$(BANK)" -merchant "$(MERCHANT)" -provider "$(PROVIDER)" $(if $(filter 1 true yes,$(APPLY)),-apply,) -confirm "$(CONFIRM)"
 
 statement-requests: build ## Regenerate bank-proof request placeholders
 	$(SOF) statement-requests -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)

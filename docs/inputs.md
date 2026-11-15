@@ -357,24 +357,34 @@ are placeholders with `status=request_physical_statement` and an
 `action=request physical statement for YYYY-MM`, so the export tells you exactly
 which physical statements to request.
 
-Import a bank CSV export to match bank debits against on-chain events:
+Import a bank CSV export to match bank debits against on-chain events. The file is parsed locally with exact integer-cent arithmetic, at most 64 MiB; malformed or overlarge inputs are rejected instead of being silently ignored.
 
 ```sh
-make bank-import BANK="$TRACEY_INPUTS/data/export.csv"          # match and review
-make bank-import BANK="$TRACEY_INPUTS/data/export.csv" APPLY=1  # attach evidence
+# First, review candidate matches in out/bank-matches.csv:
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv"
+
+# Then explicitly confirm one reviewed kind|ID key, copied from that file:
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv" \
+  APPLY=1 CONFIRM="purchase|purchase-2024-01-15"
 ```
 
 - The CSV is copied below `data/evidence/bank/` with mode 0600 and its SHA-256;
-  it becomes an artifact on matched purchase records.
+  it becomes an artifact only on explicitly confirmed purchase records.
 - Matching uses merchant keywords supplied with `MERCHANT=...` (required; put
   machine-specific values in `$TRACEY_INPUTS/node.env`) and a ±3-day window
   (`-window-days`). There is no personal default.
-- Matched rows get `status=matched_bank_evidence`, the bank booking date, amount,
-  reference and `evidence_sha256`. Matched inbound payouts become purchase
-  records with fiat and `statement_date`; rerun `make audit` so the trace stops
-  at the new purchase boundaries.
-- `out/bank-matches.csv` records every event and its match status (`matched`,
-  `ambiguous`, `missing`) for review.
+- Merchant and date produce a **candidate**, not purchase proof. Candidates have
+  `status=candidate_needs_confirmation`; apply only after corroboration or an
+  explicit human confirmation. `APPLY=1` without a valid `CONFIRM` key is rejected.
+- If a purchase already has an expected fiat amount/currency, a different bank
+  amount/currency is not silently substituted. Unknown amounts can be filled only
+  after explicit confirmation. Inbound payouts become purchase records with fiat
+  and `statement_date`; rerun `make audit` so the trace stops at the new purchase
+  boundaries.
+- `out/bank-matches.csv` records candidate status (`matched`, `ambiguous`,
+  `missing`) and the separate `confirmed` decision. Its SHA column is populated
+  only for confirmed matches. `out/statement-requests.csv` uses
+  `matched_bank_evidence` only after confirmation or another bank artifact.
 - `make statement-requests` regenerates the placeholder list from the cache.
 
 The bank file contains IBAN/account data. It stays under the private data

@@ -428,10 +428,17 @@ func (a application) statementRequests(p paths) error {
 	return nil
 }
 
-func (a application) bankImport(p paths, bankFile, merchants, provider string, windowDays int, apply bool) error {
+func (a application) bankImport(p paths, bankFile, merchants, provider string, windowDays int, apply bool, confirm string) error {
 	report, err := a.buildReport(p)
 	if err != nil {
 		return err
+	}
+	var confirmed map[string]bool
+	if apply {
+		confirmed, err = bank.ParseConfirmationIDs(confirm)
+		if err != nil {
+			return err
+		}
 	}
 	handle, err := os.Open(bankFile)
 	if err != nil {
@@ -448,6 +455,9 @@ func (a application) bankImport(p paths, bankFile, merchants, provider string, w
 	}
 	events := reportfiles.StatementEvents(report)
 	records := bank.MatchEvents(events, transactions, strings.Split(merchants, ","), windowDays)
+	for index := range records {
+		records[index].Confirmed = confirmed[records[index].Key()]
+	}
 	cache := bank.Cache{
 		BankFile: filepath.Base(bankFile), SHA256: digest, Artifact: artifact,
 		ImportedAt: time.Now().UTC().Format(time.RFC3339), Records: records,
@@ -489,12 +499,15 @@ func (a application) applyBankEvidence(p paths, report model.Report, cache bank.
 	if err != nil {
 		return err
 	}
+	purchases, updated, added := bank.Apply(purchases, report, cache, provider)
+	if updated == 0 && added == 0 {
+		return fmt.Errorf("no corroborated bank matches were confirmed with amount agreement")
+	}
 	if data, err := os.ReadFile(purchasesPath); err == nil {
 		if err := os.WriteFile(purchasesPath+".bak", data, 0o600); err != nil {
 			return err
 		}
 	}
-	purchases, updated, added := bank.Apply(purchases, report, cache, provider)
 	if err := input.SavePurchases(purchasesPath, purchases, true); err != nil {
 		return err
 	}
@@ -663,11 +676,24 @@ func (a application) testNodeWith(ctx context.Context, p paths, deps testNodeDep
 		return fmt.Errorf("real first-transfer policy cutoff did not produce a review-required incomplete trace")
 	}
 	fmt.Fprintln(a.stdout, "verified real policy cutoff produces a review-required boundary")
-	resolutions, resolvedChain, err := client.ResolveAddresses(ctx, []string{"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"})
-	if err != nil {
-		return err
+	var resolutions []core.AddressResolution
+	var resolvedChain model.Chain
+	for attempt := 0; ; attempt++ {
+		resolutions, resolvedChain, err = deps.resolve(ctx, client, []string{"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"})
+		if err == nil {
+			break
+		}
+		// A live node can connect a block between the scan's start and end tip
+		// checks. Retry a few times; every other failure is fatal.
+		if attempt >= 2 || !strings.Contains(err.Error(), "chain tip changed") {
+			return err
+		}
 	}
-	if len(resolutions) != 1 || resolvedChain != tip {
+	// A live node may advance its tip between the initial ChainTip and address
+	// resolution. That is a newer consistent snapshot, not corruption. A lower
+	// height or a same-height hash change is a reorg and must be rejected.
+	if len(resolutions) != 1 || resolvedChain.BestHeight < tip.BestHeight ||
+		(resolvedChain.BestHeight == tip.BestHeight && resolvedChain.BestBlock != tip.BestBlock) {
 		return fmt.Errorf("real current-UTXO address resolution returned an inconsistent snapshot")
 	}
 	exists, height, note, err := client.ConfirmTransaction(ctx, firstTransfer)
