@@ -135,6 +135,31 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("bank-import requires -provider")
 		}
 		return app.bankImport(*p, *bankFile, *merchants, *provider, *window, *apply, *confirm)
+	case "statement-import":
+		fs, p := common("statement-import")
+		statementDir := fs.String("statement-dir", "", "directory containing bank statement PDFs")
+		institution := fs.String("institution", "de-bank", "statement format: generic German checking account")
+		merchants := fs.String("merchant", "", "comma-separated merchant keywords (required)")
+		provider := fs.String("provider", "", "provider name for created purchase records (required)")
+		window := fs.Int("window-days", 3, "date window around each on-chain event")
+		apply := fs.Bool("apply", false, "attach explicitly confirmed PDF evidence")
+		confirm := fs.String("confirm", "", "comma-separated reviewed purchase|id or inbound_payout|id confirmations")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if strings.TrimSpace(*statementDir) == "" {
+			return fmt.Errorf("statement-import requires -statement-dir")
+		}
+		if strings.TrimSpace(*institution) == "" {
+			return fmt.Errorf("statement-import requires -institution")
+		}
+		if strings.TrimSpace(*merchants) == "" {
+			return fmt.Errorf("statement-import requires -merchant")
+		}
+		if strings.TrimSpace(*provider) == "" {
+			return fmt.Errorf("statement-import requires -provider")
+		}
+		return app.statementImport(ctx, *p, *statementDir, *institution, *merchants, *provider, *window, *apply, *confirm)
 	case "statement-requests":
 		fs, p := common("statement-requests")
 		if err := fs.Parse(args[1:]); err != nil {

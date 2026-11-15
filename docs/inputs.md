@@ -393,6 +393,33 @@ when matched; redact it before sharing outside your accountant. Bank history
 older than the online export window cannot be matched and stays as a placeholder
 for a physical statement request.
 
+### PDF statements
+
+`make statement-import` parses local statement PDFs with `pdftotext -layout`
+(OCR fallback follows the intake path), stores each PDF under
+`$TRACEY_INPUTS/data/evidence/bank/` with SHA-256, and matches purchase events
+as candidates:
+
+```sh
+make statement-import \
+  STATEMENT_DIR="$TRACEY_INPUTS/data/bank-statements"
+```
+
+- Only checking-account statements are imported (`Girokonto` and
+  `checking-zero`); savings accounts and non-statement PDFs are skipped.
+- Matching is still candidate-only. `APPLY=1` requires explicit
+  `CONFIRM="purchase|id"` keys; unconfirmed rows never attach evidence.
+- Existing CSV matches and confirmed rows are preserved.
+- The printable overview gains a **Bank statement coverage** table and a
+  **Statement evidence** appendix showing the booking date, amount, recipient,
+  purpose, reference, PDF file, page, SHA-256, and confirmation status.
+- A statement with no matching purchase row remains visible in the coverage
+  table rather than being treated as proof.
+
+The checking-account profile is implemented. A other bank profile is added when its
+Finanzreport PDF is available; the parser accepts only the institution profiles
+it knows.
+
 ### Exchange evidence gaps
 
 `make report` also writes the exchange-side gap lists derived from the trace:

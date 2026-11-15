@@ -51,6 +51,19 @@ type MatchRecord struct {
 	BankReference string `json:"bank_reference,omitempty"`
 	BankAmountEUR string `json:"bank_amount_eur,omitempty"`
 	BankCurrency  string `json:"bank_currency,omitempty"`
+
+	// Statement provenance for PDF evidence. Artifact/ArtifactSHA256 select the
+	// per-record PDF; when empty, Apply falls back to the cache-level artifact.
+	StatementFile      string `json:"statement_file,omitempty"`
+	StatementPage      int    `json:"statement_page,omitempty"`
+	StatementSHA256    string `json:"statement_sha256,omitempty"`
+	StatementMonth     string `json:"statement_month,omitempty"`
+	StatementRecipient string `json:"statement_recipient,omitempty"`
+	StatementPurpose   string `json:"statement_purpose,omitempty"`
+	StatementText      string `json:"statement_text,omitempty"`
+	StatementReference string `json:"statement_reference,omitempty"`
+	Artifact           string `json:"artifact,omitempty"`
+	ArtifactSHA256     string `json:"artifact_sha256,omitempty"`
 }
 
 func (m MatchRecord) Key() string { return m.Kind + "|" + m.ID }
@@ -72,14 +85,27 @@ func ParseConfirmationIDs(value string) (map[string]bool, error) {
 	return confirmed, nil
 }
 
+// StatementSource is one imported PDF statement.
+type StatementSource struct {
+	Institution string `json:"institution"`
+	Account     string `json:"account,omitempty"`
+	Period      string `json:"period,omitempty"`
+	File        string `json:"file"`
+	SHA256      string `json:"sha256"`
+	Pages       int    `json:"pages,omitempty"`
+	Rows        int    `json:"rows,omitempty"`
+	ImportedAt  string `json:"imported_at,omitempty"`
+}
+
 // Cache is written below the project cache directory after a bank import.
 type Cache struct {
-	SchemaVersion int           `json:"schema_version"`
-	BankFile      string        `json:"bank_file,omitempty"`
-	SHA256        string        `json:"sha256,omitempty"`
-	Artifact      string        `json:"artifact,omitempty"`
-	ImportedAt    string        `json:"imported_at,omitempty"`
-	Records       []MatchRecord `json:"records"`
+	SchemaVersion int               `json:"schema_version"`
+	BankFile      string            `json:"bank_file,omitempty"`
+	SHA256        string            `json:"sha256,omitempty"`
+	Artifact      string            `json:"artifact,omitempty"`
+	ImportedAt    string            `json:"imported_at,omitempty"`
+	Statements    []StatementSource `json:"statements,omitempty"`
+	Records       []MatchRecord     `json:"records"`
 }
 
 // LoadCache reads a bank match cache; a missing file returns an empty cache.
@@ -177,6 +203,14 @@ func MatchEvents(events []Event, transactions []Transaction, merchants []string,
 			if record.BankCurrency == "" {
 				record.BankCurrency = "EUR"
 			}
+			record.StatementFile = best[0].tx.SourceFile
+			record.StatementPage = best[0].tx.SourcePage
+			record.StatementSHA256 = best[0].tx.SourceSHA256
+			record.StatementMonth = best[0].tx.SourceMonth
+			record.StatementRecipient = best[0].tx.Name
+			record.StatementPurpose = best[0].tx.Purpose
+			record.StatementText = best[0].tx.SourceText
+			record.StatementReference = best[0].tx.SourceReference
 		case len(best) > 1:
 			record.Status = "ambiguous"
 		}

@@ -227,6 +227,20 @@ existing expected fiat amount is not silently replaced. After confirmation, run
 `make audit` so the new purchase evidence is applied to the ancestry, then
 review `out/statement-requests.csv` and `out/overview.pdf`.
 
+PDF statements use the same confirmation rule:
+
+```sh
+make statement-import STATEMENT_DIR="$TRACEY_INPUTS/data/bank-statements"
+# Review out/bank-matches.csv, then confirm exact keys:
+make statement-import STATEMENT_DIR="$TRACEY_INPUTS/data/bank-statements" \
+  APPLY=1 CONFIRM="purchase|your-purchase-id"
+```
+
+Only checking-account statements (`Girokonto`/`checking-zero`) are imported;
+savings accounts and non-statement PDFs are skipped. The overview adds a
+statement-coverage table and a statement-evidence appendix; the PDFs remain
+outside the repository under `$TRACEY_INPUTS/data/evidence/bank/`.
+
 ## 7. Validate, trace, and review
 
 ```sh

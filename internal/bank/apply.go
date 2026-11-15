@@ -66,7 +66,6 @@ func bankNote(record MatchRecord) string {
 // purchase records for confirmed inbound payouts. Matched candidates must have
 // an explicit Confirmed decision; mismatched existing fiat is left unchanged.
 func Apply(purchases model.PurchaseFile, report model.Report, cache Cache, provider string) (model.PurchaseFile, int, int) {
-	artifact := model.Artifact{Path: cache.Artifact, SHA256: cache.SHA256, Description: "Local bank statement export"}
 	updated, added := 0, 0
 	existingOutpoints := map[string]bool{}
 	for _, purchase := range purchases.Purchases {
@@ -75,9 +74,20 @@ func Apply(purchases model.PurchaseFile, report model.Report, cache Cache, provi
 		}
 	}
 	for _, record := range cache.Records {
-		if record.Status != "matched" || !record.Confirmed || cache.Artifact == "" {
+		artifactPath := record.Artifact
+		artifactSHA := record.ArtifactSHA256
+		if artifactPath == "" {
+			artifactPath = cache.Artifact
+			artifactSHA = cache.SHA256
+		}
+		if record.Status != "matched" || !record.Confirmed || artifactPath == "" {
 			continue
 		}
+		description := "Local bank statement export"
+		if record.StatementFile != "" {
+			description = "Local bank statement PDF"
+		}
+		artifact := model.Artifact{Path: artifactPath, SHA256: artifactSHA, Description: description}
 		if record.Kind == "purchase" {
 			for index := range purchases.Purchases {
 				purchase := &purchases.Purchases[index]

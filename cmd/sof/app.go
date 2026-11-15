@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"tracey-sof/internal/provenance"
 	reportfiles "tracey-sof/internal/report"
 	uiserver "tracey-sof/internal/server"
+	"tracey-sof/internal/statement"
 )
 
 type paths struct{ dataDir, cacheDir, outDir, fixtures, inbox string }
@@ -26,6 +29,9 @@ type application struct{ stdout, stderr io.Writer }
 
 const firstTransfer = "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16"
 const firstTransferParent = "0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9"
+
+var parseStatementPDF = statement.Extract
+var storeStatementArtifact = bank.StoreArtifact
 
 func loadInputs(dir string, artifacts bool) (model.PurchaseFile, model.Owned, model.AnnotationFile, error) {
 	owned, err := input.LoadOwned(filepath.Join(dir, "owned.json"))
@@ -491,6 +497,113 @@ func (a application) bankImport(p paths, bankFile, merchants, provider string, w
 		return nil
 	}
 	return a.applyBankEvidence(p, report, cache, provider)
+}
+
+func (a application) statementImport(ctx context.Context, p paths, dir, institution, merchants, provider string, windowDays int, apply bool, confirm string) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	var confirmed map[string]bool
+	if apply {
+		confirmed, err = bank.ParseConfirmationIDs(confirm)
+		if err != nil {
+			return err
+		}
+	}
+	files, err := statementFiles(dir)
+	if err != nil {
+		return err
+	}
+	cache, err := bank.LoadCache(filepath.Join(p.cacheDir, "bank-matches.json"))
+	if err != nil {
+		return err
+	}
+	transactions := make([]bank.Transaction, 0)
+	sources := make([]bank.StatementSource, 0, len(files))
+	now := time.Now().UTC().Format(time.RFC3339)
+	imported := 0
+	for _, path := range files {
+		parsed, err := parseStatementPDF(ctx, path, institution)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+		if parsed.Institution == "de-bank" && !parsed.IsCheckingAccount() {
+			continue
+		}
+		artifact, digest, err := storeStatementArtifact(p.dataDir, path)
+		if err != nil {
+			return err
+		}
+		parsed.File = artifact
+		parsed.SHA256 = digest
+		sources = append(sources, bank.StatementSource{
+			Institution: parsed.Institution, Period: parsed.Period, File: artifact,
+			SHA256: digest, Pages: parsed.Pages, Rows: len(parsed.Rows), ImportedAt: now,
+		})
+		transactions = append(transactions, parsed.Transactions()...)
+		imported++
+	}
+	events := reportfiles.StatementEvents(report)
+	incoming := bank.MatchEvents(events, transactions, strings.Split(merchants, ","), windowDays)
+	for index := range incoming {
+		incoming[index].Confirmed = confirmed[incoming[index].Key()]
+		if incoming[index].StatementFile != "" {
+			incoming[index].Artifact = incoming[index].StatementFile
+			incoming[index].ArtifactSHA256 = incoming[index].StatementSHA256
+		}
+	}
+	cache = bank.MergeStatements(cache, incoming, sources)
+	if err := bank.SaveCache(filepath.Join(p.cacheDir, "bank-matches.json"), cache); err != nil {
+		return err
+	}
+	matchesData, _ := reportfiles.BankMatchesCSVBytes(cache)
+	if err := reportfiles.AtomicWrite(filepath.Join(p.outDir, "bank-matches.csv"), matchesData, 0o600); err != nil {
+		return err
+	}
+	if err := a.writeStatementRequests(p, report); err != nil {
+		return err
+	}
+	matched, ambiguous, missing := 0, 0, 0
+	for _, record := range incoming {
+		switch record.Status {
+		case "matched":
+			matched++
+		case "ambiguous":
+			ambiguous++
+		default:
+			missing++
+		}
+	}
+	fmt.Fprintf(a.stdout, "PDF statements imported: %d; rows: %d; matched events: %d; ambiguous: %d; without match: %d\n",
+		imported, len(transactions), matched, ambiguous, missing)
+	fmt.Fprintf(a.stdout, "wrote %s and %s\n", filepath.Join(p.outDir, "bank-matches.csv"), filepath.Join(p.outDir, "statement-requests.csv"))
+	if !apply {
+		fmt.Fprintln(a.stdout, "review the lists, then rerun with APPLY=1 and CONFIRM=\"purchase|id\" to attach confirmed PDF evidence")
+		return nil
+	}
+	return a.applyBankEvidence(p, report, cache, provider)
+}
+
+func statementFiles(dir string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && strings.EqualFold(filepath.Ext(path), ".pdf") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no PDF statements found in %s", dir)
+	}
+	return files, nil
 }
 
 func (a application) applyBankEvidence(p paths, report model.Report, cache bank.Cache, provider string) error {

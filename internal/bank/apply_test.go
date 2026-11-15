@@ -109,3 +109,33 @@ func TestStoreArtifactDirectoryError(t *testing.T) {
 		t.Fatal("write over a directory was accepted")
 	}
 }
+
+func TestApplyUsesPerRecordPDFArtifact(t *testing.T) {
+	txid := strings.Repeat("d", 64)
+	second := strings.Repeat("e", 64)
+	amount := int64(100)
+	purchases := model.PurchaseFile{SchemaVersion: 1, Purchases: []model.Purchase{{
+		ID: "p1", Outpoints: []model.Outpoint{{TxID: txid, Vout: 0}}, AmountSats: &amount,
+	}}}
+	cache := Cache{Records: []MatchRecord{
+		{Kind: "purchase", ID: "p1", Status: "matched", Confirmed: true, StatementFile: "evidence/bank/2024-01.pdf",
+			Artifact: "evidence/bank/2024-01.pdf", ArtifactSHA256: "pdf-sha", BankDate: "2024-01-02",
+			BankAmountEUR: "1.00", BankCurrency: "EUR"},
+		{Kind: "inbound_payout", ID: second + ":1", Date: "2024-02-01", TxID: second, Outpoint: second + ":1",
+			AmountSats: 200, Status: "matched", Confirmed: true, StatementFile: "evidence/bank/2024-02.pdf",
+			Artifact: "evidence/bank/2024-02.pdf", ArtifactSHA256: "pdf-sha-2", BankDate: "2024-02-02",
+			BankAmountEUR: "2.00", BankCurrency: "EUR"},
+	}}
+	updated, added := 0, 0
+	purchases, updated, added = Apply(purchases, model.Report{}, cache, "Example Exchange")
+	if updated != 1 || added != 1 {
+		t.Fatalf("apply = %d/%d", updated, added)
+	}
+	if len(purchases.Purchases[0].Artifacts) != 1 || purchases.Purchases[0].Artifacts[0].Path != "evidence/bank/2024-01.pdf" ||
+		purchases.Purchases[0].Artifacts[0].Description != "Local bank statement PDF" {
+		t.Errorf("purchase artifact = %+v", purchases.Purchases[0].Artifacts)
+	}
+	if len(purchases.Purchases[1].Artifacts) != 1 || purchases.Purchases[1].Artifacts[0].Path != "evidence/bank/2024-02.pdf" {
+		t.Errorf("created artifact = %+v", purchases.Purchases[1].Artifacts)
+	}
+}

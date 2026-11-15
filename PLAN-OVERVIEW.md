@@ -46,6 +46,11 @@ One printable document, `$TRACEY_INPUTS/out/overview.pdf`, that can be read with
       `funds unspent output` for their funding transactions, and
       `inbound gap`/`outbound gap` for the transactions listed in the gaps
       sections. Combined markers are joined with `·`.
+- [x] Add a **Bank statement coverage** table and a **Statement evidence**
+      appendix. PDF statements are referenced by month, file/page, SHA-256 and
+      match status; the PDFs themselves are not embedded.
+- [x] Mark purchase rows with `statement confirmed`, `statement candidate` or
+      `statement ambiguous` when a PDF match exists.
 
 ### B. Tests and the 100% coverage gate
 

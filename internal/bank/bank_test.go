@@ -64,3 +64,16 @@ func TestParseCSVErrors(t *testing.T) {
 		t.Fatalf("invalid rows = %v, %v", rows, err)
 	}
 }
+
+func TestParseAmountAndSourceReference(t *testing.T) {
+	cents, err := ParseAmountEUR("1.234,56")
+	if err != nil || cents != 123456 {
+		t.Fatalf("cents = %d, %v", cents, err)
+	}
+	if _, err := ParseAmountEUR("bad"); err == nil {
+		t.Fatal("malformed amount accepted")
+	}
+	if got := (Transaction{Purpose: "x", SourceReference: " REF-9 "}).Reference(); got != "REF-9" {
+		t.Errorf("source reference = %q", got)
+	}
+}

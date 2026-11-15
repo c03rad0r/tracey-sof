@@ -419,3 +419,9 @@ func TestScannerAdditionalBranches(t *testing.T) {
 		t.Fatal("incompatible structured role accepted")
 	}
 }
+
+func TestExtractPDFTextMissing(t *testing.T) {
+	if _, _, err := ExtractPDFText(context.Background(), filepath.Join(t.TempDir(), "missing.pdf")); err == nil {
+		t.Fatal("missing PDF accepted")
+	}
+}

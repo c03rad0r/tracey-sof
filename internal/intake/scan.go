@@ -188,6 +188,12 @@ func (s Scanner) scanFile(ctx context.Context, path, dataDir, mediaType string) 
 	return source, nil
 }
 
+// ExtractPDFText returns the embedded text (or OCR fallback) for a PDF using
+// the same local pdftotext/poppler/tesseract path as intake.
+func ExtractPDFText(ctx context.Context, path string) (string, []string, error) {
+	return DefaultScanner().extractPDF(ctx, path)
+}
+
 func (s Scanner) extractPDF(ctx context.Context, path string) (string, []string, error) {
 	text, textErr := s.run(ctx, "pdftotext", "-layout", "-enc", "UTF-8", path, "-")
 	if textErr == nil && strings.TrimSpace(string(text)) != "" {

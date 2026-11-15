@@ -21,6 +21,19 @@ type Transaction struct {
 	Text        string
 	AmountCents int64
 	Currency    string
+
+	// Optional statement provenance for PDF imports.
+	SourceFile      string
+	SourcePage      int
+	SourceSHA256    string
+	SourceMonth     string
+	SourceText      string
+	SourceReference string
+}
+
+// ParseAmountEUR parses a German-formatted amount into integer cents.
+func ParseAmountEUR(value string) (int64, error) {
+	return parseGermanAmount(value)
 }
 
 const maxBankCSVBytes = 64 << 20
@@ -150,6 +163,9 @@ func AmountEUR(cents int64) string {
 
 // Reference returns a short bank reference from the purpose text.
 func (t Transaction) Reference() string {
+	if strings.TrimSpace(t.SourceReference) != "" {
+		return strings.TrimSpace(t.SourceReference)
+	}
 	fields := strings.Fields(t.Purpose)
 	if len(fields) > 1 {
 		return fields[1]

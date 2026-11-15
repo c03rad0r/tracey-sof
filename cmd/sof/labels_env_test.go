@@ -30,7 +30,7 @@ provision: ; @env | grep -E '^(MERCHANT|PROVIDER|SOF_EXCHANGE_LABELS)=' | sort |
 	for _, target := range []string{"bank-import", "gaps"} {
 		t.Run(target, func(t *testing.T) {
 			command := exec.CommandContext(context.Background(), "make", "-f", wrapper, target)
-			command.Env = append(os.Environ(), "MERCHANT=example-merchant", "PROVIDER=example-provider", "SOF_EXCHANGE_LABELS=example-exchange")
+			command.Env = append(os.Environ(), "ENV_FILE=/dev/null", "MERCHANT=example-merchant", "PROVIDER=example-provider", "SOF_EXCHANGE_LABELS=example-exchange")
 			output, err := command.CombinedOutput()
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", target, err, output)
@@ -44,7 +44,7 @@ provision: ; @env | grep -E '^(MERCHANT|PROVIDER|SOF_EXCHANGE_LABELS)=' | sort |
 	}
 	t.Run("provision-does-not-inherit-labels", func(t *testing.T) {
 		command := exec.CommandContext(context.Background(), "make", "-f", wrapper, "provision")
-		command.Env = append(os.Environ(), "MERCHANT=example-merchant", "PROVIDER=example-provider", "SOF_EXCHANGE_LABELS=example-exchange")
+		command.Env = append(os.Environ(), "ENV_FILE=/dev/null", "MERCHANT=example-merchant", "PROVIDER=example-provider", "SOF_EXCHANGE_LABELS=example-exchange")
 		output, err := command.CombinedOutput()
 		if err != nil {
 			t.Fatalf("provision: %v\n%s", err, output)

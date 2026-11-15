@@ -44,7 +44,7 @@ endif
 MERCHANT ?=
 PROVIDER ?=
 SOF_EXCHANGE_LABELS ?=
-BANK_LABEL_TARGETS := bank-import gaps gaps-inflow gaps-outflow gaps-check gaps-check-all report audit overview export ui
+BANK_LABEL_TARGETS := bank-import statement-import gaps gaps-inflow gaps-outflow gaps-check gaps-check-all report audit overview export ui
 unexport MERCHANT PROVIDER SOF_EXCHANGE_LABELS
 $(BANK_LABEL_TARGETS): export MERCHANT := $(MERCHANT)
 $(BANK_LABEL_TARGETS): export PROVIDER := $(PROVIDER)
@@ -61,7 +61,7 @@ $(RPC_TARGETS): export BITCOIND_COOKIE_FILE := $(BITCOIND_COOKIE_FILE)
 $(RPC_TARGETS): export BITCOIND_RPC_USER := $(BITCOIND_RPC_USER)
 $(RPC_TARGETS): export BITCOIND_RPC_PASSWORD := $(BITCOIND_RPC_PASSWORD)
 
-.PHONY: help inputs setup init vendor build clean clean-outputs validate labels-import node-check discover trace report audit ui graphs bank-import statement-requests gaps gaps-inflow gaps-outflow gaps-check gaps-check-all export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check leak-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
+.PHONY: help inputs setup init vendor build clean clean-outputs validate labels-import node-check discover trace report audit ui graphs bank-import statement-import statement-requests gaps gaps-inflow gaps-outflow gaps-check gaps-check-all export example test test-go test-web test-node coverage coverage-go coverage-web lint privacy-check leak-check verify release-check pdf intake resolve-intake review-intake promote-intake provision ansible-check core-check core-preflight core-download core-verify core-install core-update
 
 help: ## Show commands
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' Makefile
@@ -175,6 +175,8 @@ graphs: build ## Write graph-all.svg and one focused SVG per current UTXO
 	$(SOF) graphs -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
 
 BANK ?=
+STATEMENT_DIR ?=
+INSTITUTION ?= de-bank
 APPLY ?= 0
 CONFIRM ?=
 
@@ -183,6 +185,12 @@ bank-import: build ## Import reviewed bank matches with explicit confirmations
 	@test -n "$(MERCHANT)" || { echo 'MERCHANT is required; set it in $(ENV_FILE)'; exit 1; }
 	@test -n "$(PROVIDER)" || { echo 'PROVIDER is required; set it in $(ENV_FILE)'; exit 1; }
 	$(SOF) bank-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -bank-file "$(BANK)" -merchant "$(MERCHANT)" -provider "$(PROVIDER)" $(if $(filter 1 true yes,$(APPLY)),-apply,) -confirm "$(CONFIRM)"
+
+statement-import: build ## Import reviewed PDF statements with explicit confirmations
+	@test -n "$(STATEMENT_DIR)" || { echo 'STATEMENT_DIR is required (directory of bank statement PDFs)'; exit 1; }
+	@test -n "$(MERCHANT)" || { echo 'MERCHANT is required; set it in $(ENV_FILE)'; exit 1; }
+	@test -n "$(PROVIDER)" || { echo 'PROVIDER is required; set it in $(ENV_FILE)'; exit 1; }
+	$(SOF) statement-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -statement-dir "$(STATEMENT_DIR)" -institution "$(INSTITUTION)" -merchant "$(MERCHANT)" -provider "$(PROVIDER)" $(if $(filter 1 true yes,$(APPLY)),-apply,) -confirm "$(CONFIRM)"
 
 statement-requests: build ## Regenerate bank-proof request placeholders
 	$(SOF) statement-requests -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR)
