@@ -33,7 +33,7 @@ trap 'rm -f "$tmp" "$tmp.fp"' EXIT HUP INT TERM
 allowed_hosts="127.0.0.1 localhost [::1] www.w3.org bitcoincore.org github.com json-schema.org"
 
 # Personal data patterns. These apply to code, tests, docs, examples and plans.
-personal='/run/media/|/home/(admin|c08rad0r|c03rad0r)/|a1b2c3d4|Example Bank|Example Merchant|Example Exchange|exchange c|exchange b|\bexchange a\b|the live node|\b(xprv|yprv|zprv|tprv|vprv)[1-9A-HJ-NP-Za-km-z]{50,}\b|\bDE[0-9]{20}\b|\bRF[0-9]{2}[A-Z0-9]{8,}\b'
+personal='/run/media/|/home/(admin|c08rad0r|c03rad0r)/|d24da9f2|Sparda|Pocket App|Pocket Bitcoin|jeffpocket|bull bitcoin|\bbringin\b|dq05|\b(xprv|yprv|zprv|tprv|vprv)[1-9A-HJ-NP-Za-km-z]{50,}\b|\bDE[0-9]{20}\b|\bRF[0-9]{2}[A-Z0-9]{8,}\b'
 private_paths='(^|/)(data|out|cache|node\.env|\.env)(/|$)'
 
 fail=0
