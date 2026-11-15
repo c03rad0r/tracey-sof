@@ -114,6 +114,56 @@ printf '%%PDF-1.7\n%% synthetic offline browser output\n' > "$pdf"
 	}
 }
 
+func TestCoveragePDFUnredactedUsesNoRedactionQuery(t *testing.T) {
+	dir := coverageBrowserDir(t)
+	coverageReportHTML(t, dir)
+	browser := coverageBrowserScript(t, dir, "fake-browser", `
+pdf=
+for argument in "$@"; do
+  case "$argument" in
+    --print-to-pdf=*) pdf=${argument#--print-to-pdf=} ;;
+  esac
+done
+printf '%s\n' "$@" > "$pdf.arguments"
+printf '%%PDF-1.7\n' > "$pdf"
+`)
+	if err := PDFWithOptions(context.Background(), dir, browser, PDFOptions{Unredacted: true}); err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(dir, "report.pdf.arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(arguments), "report.html") || strings.Contains(string(arguments), "redact=") {
+		t.Errorf("unredacted PDF requested a redaction query: %q", arguments)
+	}
+}
+
+func TestCoveragePDFRedactedRequestsRedactOn(t *testing.T) {
+	dir := coverageBrowserDir(t)
+	coverageReportHTML(t, dir)
+	browser := coverageBrowserScript(t, dir, "fake-browser", `
+pdf=
+for argument in "$@"; do
+  case "$argument" in
+    --print-to-pdf=*) pdf=${argument#--print-to-pdf=} ;;
+  esac
+done
+printf '%s\n' "$@" > "$pdf.arguments"
+printf '%%PDF-1.7\n' > "$pdf"
+`)
+	if err := PDFWithOptions(context.Background(), dir, browser, PDFOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(dir, "report.pdf.arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(arguments), "report.html?redact=1") {
+		t.Errorf("redacted PDF did not request redact=1: %q", arguments)
+	}
+}
+
 func TestCoveragePDFBrowserFailures(t *testing.T) {
 	writePDF := `
 pdf=

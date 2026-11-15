@@ -126,7 +126,18 @@ func TestPurchaseAndAnnotationValidation(t *testing.T) {
 	if err := ValidatePurchases(purchases, dir, true); err != nil {
 		t.Fatal(err)
 	}
-	annotations := model.AnnotationFile{SchemaVersion: 1, Transactions: map[string]model.Annotation{txid: {Label: "purchase"}}, Addresses: map[string]model.Annotation{address: {Note: "mine"}}, Outpoints: map[string]model.Annotation{txid + ":0": {Label: "coin"}}, PurchaseLinks: []model.PurchaseLink{{Target: txid, PurchaseID: "buy-1", Decision: "confirmed"}, {Target: txid + ":0", PurchaseID: "buy-1", Decision: "rejected"}, {Target: address, PurchaseID: "buy-1", Decision: "confirmed"}}}
+	value := int64(1234)
+	xpubKey := "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
+	annotations := model.AnnotationFile{SchemaVersion: 1,
+		Transactions: map[string]model.Annotation{txid: {Label: "purchase", Rate: map[string]string{"USD": "63504.42"}, Time: "2026-08-03T21:57:31Z", Height: 960919}},
+		Addresses:    map[string]model.Annotation{address: {Note: "mine"}},
+		Outpoints:    map[string]model.Annotation{txid + ":0": {Label: "coin", ValueSats: &value, Fiat: map[string]string{"USD": "0.64"}, KeyPath: "/0/0", Origin: "wpkh([a1b2c3d4/84h/0h/0h])"}},
+		XPubs:        map[string]model.Annotation{xpubKey: {Label: "BitBox 02"}},
+		PurchaseLinks: []model.PurchaseLink{
+			{Target: txid, PurchaseID: "buy-1", Decision: "confirmed"},
+			{Target: txid + ":0", PurchaseID: "buy-1", Decision: "rejected"},
+			{Target: address, PurchaseID: "buy-1", Decision: "confirmed"},
+		}}
 	if err := ValidateAnnotations(annotations); err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +159,8 @@ func TestPurchaseAndAnnotationValidation(t *testing.T) {
 		{"address", func(p *model.PurchaseFile) { p.Purchases[0].Addresses[0] = "bad" }},
 		{"outpoint", func(p *model.PurchaseFile) { p.Purchases[0].Outpoints[0].TxID = "bad" }},
 		{"amount", func(p *model.PurchaseFile) { zero := int64(0); p.Purchases[0].AmountSats = &zero }},
+		{"negative height", func(p *model.PurchaseFile) { p.Purchases[0].Height = -1 }},
+		{"bad statement date", func(p *model.PurchaseFile) { p.Purchases[0].StatementDate = "05.03.2024" }},
 		{"fiat", func(p *model.PurchaseFile) { p.Purchases[0].Fiat.Currency = "eur" }},
 		{"fiat amount", func(p *model.PurchaseFile) { p.Purchases[0].Fiat.Amount = "01" }},
 		{"path", func(p *model.PurchaseFile) { p.Purchases[0].Artifacts[0].Path = "../secret" }},
@@ -170,7 +183,22 @@ func TestPurchaseAndAnnotationValidation(t *testing.T) {
 	if err := ValidatePurchases(purchases, dir, true); err == nil {
 		t.Error("expected hash validation error")
 	}
-	badAnnotations := []model.AnnotationFile{{SchemaVersion: 2}, {SchemaVersion: 1, Transactions: map[string]model.Annotation{"bad": {}}}, {SchemaVersion: 1, Addresses: map[string]model.Annotation{"bad": {}}}, {SchemaVersion: 1, Outpoints: map[string]model.Annotation{"bad": {}}}, {SchemaVersion: 1, PurchaseLinks: []model.PurchaseLink{{Target: "bad", PurchaseID: "buy", Decision: "maybe"}}}}
+	negative := int64(-1)
+	badAnnotations := []model.AnnotationFile{
+		{SchemaVersion: 2},
+		{SchemaVersion: 1, Transactions: map[string]model.Annotation{"bad": {}}},
+		{SchemaVersion: 1, Addresses: map[string]model.Annotation{"bad": {}}},
+		{SchemaVersion: 1, Outpoints: map[string]model.Annotation{"bad": {}}},
+		{SchemaVersion: 1, PurchaseLinks: []model.PurchaseLink{{Target: "bad", PurchaseID: "buy", Decision: "maybe"}}},
+		{SchemaVersion: 1, Outpoints: map[string]model.Annotation{txid + ":0": {ValueSats: &negative}}},
+		{SchemaVersion: 1, Transactions: map[string]model.Annotation{txid: {Height: -1}}},
+		{SchemaVersion: 1, Transactions: map[string]model.Annotation{txid: {Time: "yesterday"}}},
+		{SchemaVersion: 1, Transactions: map[string]model.Annotation{txid: {Fiat: map[string]string{"usd": "1.00"}}}},
+		{SchemaVersion: 1, Transactions: map[string]model.Annotation{txid: {Rate: map[string]string{"USD": "01"}}}},
+		{SchemaVersion: 1, Addresses: map[string]model.Annotation{address: {Time: "yesterday"}}},
+		{SchemaVersion: 1, XPubs: map[string]model.Annotation{xpubKey: {Height: -1}}},
+		{SchemaVersion: 1, XPubs: map[string]model.Annotation{"not-an-xpub": {Label: "bad"}}},
+	}
 	for i, item := range badAnnotations {
 		if err := ValidateAnnotations(item); err == nil {
 			t.Errorf("bad annotation %d accepted", i)
@@ -228,7 +256,7 @@ func TestLoadAndRoundTrip(t *testing.T) {
 
 func TestEmptyAnnotations(t *testing.T) {
 	file := EmptyAnnotations()
-	if file.SchemaVersion != 1 || file.Transactions == nil || file.Addresses == nil || file.Outpoints == nil {
+	if file.SchemaVersion != 1 || file.Transactions == nil || file.Addresses == nil || file.Outpoints == nil || file.XPubs == nil {
 		t.Fatal("empty file not initialized")
 	}
 }

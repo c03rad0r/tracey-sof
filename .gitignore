@@ -1,8 +1,12 @@
-# Private user information and generated artifacts
+# Private user information and generated artifacts. The default location is
+# outside this repository ($HOME/tracey-inputs); these entries are a second line
+# of defence against accidental in-repo copies.
 /data/
 /out/
 /cache/
 /tmp/
+# Do not ignore an in-repo tracey-inputs tree: it must stay visible so the
+# privacy scan can reject it.
 
 # Local build, dependency, and test state
 /.cache/

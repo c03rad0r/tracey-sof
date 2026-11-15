@@ -2,7 +2,7 @@
 
 This document is the manual follow-up for the current Core 32.1 installation. It assumes a Linux host with `sudo`, an existing Bitcoin Core service, and a mounted blockchain datadir. No AI is required.
 
-**Current verified state:** Core 32.1 is installed under `/opt/bitcoin-core/32.1` and its archive passed GPG verification with builder key `152812300785C96444D3334D17565732E08E5E41` (`achow101`). The running service uses the `/run/media/admin/BLOCKCHAIN/bitcoin-full` datadir on `/dev/sda1`.
+**Current verified state:** Core 32.1 is installed under `/opt/bitcoin-core/32.1` and its archive passed GPG verification with builder key `152812300785C96444D3334D17565732E08E5E41` (`achow101`). The running service uses a datadir on a dedicated SSD.
 
 **Remaining work:** enable the unit for reboot, activate the dedicated application RPC credentials, fill in your inputs, validate the node and chain state, then run reports.
 
@@ -15,7 +15,7 @@ git clone https://github.com/c03rad0r/tracey-sof.git
 cd ~/tracey-sof
 ```
 
-On the existing host, `node.env` and `cache/local-rpcauth.conf` were already generated locally. **Those files are intentionally not committed and will be absent from a fresh clone.** Recreate them in step 3; do not overwrite existing credential files unnecessarily.
+On an existing host, `$TRACEY_INPUTS/node.env` and `$TRACEY_INPUTS/cache/local-rpcauth.conf` may already exist. **Those files are outside the repository and will be absent from a fresh clone.** Recreate them in step 3; do not overwrite existing credential files unnecessarily.
 
 Install dependencies if any are missing:
 
@@ -35,13 +35,48 @@ make build
 make help
 ```
 
+## Migrating an older in-repo checkout
+
+If an earlier checkout contains `data/`, `out/`, `cache/`, or `node.env`, inspect those files before moving anything. Treat unfamiliar files as potential wallet or purchase evidence; do not move, overwrite, or delete them until you know what they contain. Run this only from the repository root, and make a separate backup first:
+
+```sh
+export TRACEY_INPUTS="${TRACEY_INPUTS:-$HOME/tracey-inputs}"
+install -d -m 700 "$TRACEY_INPUTS"/{data,cache,out,notes,migration-original}
+
+# Preserve any seed/example files already in the private tree.
+for directory in data out cache; do
+  if [ -e "$TRACEY_INPUTS/$directory" ]; then
+    mv -T "$TRACEY_INPUTS/$directory" "$TRACEY_INPUTS/migration-original/seed-$directory"
+  fi
+done
+
+# Move actual inputs into the new private tree.
+for directory in data out cache; do
+  if [ -e "$directory" ]; then
+    mv -T "$directory" "$TRACEY_INPUTS/$directory"
+  fi
+done
+
+# Existing node.env remains readable only by its owner and is not committed.
+if [ -f node.env ]; then
+  mv node.env "$TRACEY_INPUTS/migration-original/node.env"
+fi
+```
+
+Keep any backups outside Git. Check the destination filenames, modes, and credentials before running `make node-check`. If `$TRACEY_INPUTS/node.env` already exists, do not overwrite it with the migrated backup. Continue with step 3 only if you need fresh credentials.
+
+For a new checkout, continue normally; no migration is required.
+
 ## 2. Check Core and datadir paths
+
+The examples below use `/mnt/blockchain` as the mount point. Substitute your actual
+datadir path from `findmnt` or `bitcoin.conf`.
 
 ```sh
 readlink -f /usr/local/bin/bitcoind
 /usr/local/bin/bitcoin-cli --version
 systemctl is-active bitcoind
-findmnt /run/media/admin/BLOCKCHAIN
+findmnt /mnt/blockchain
 ```
 
 The binary should point to `/opt/bitcoin-core/32.1`. The datadir should be mounted. The unit may be `disabled`; step 5 enables it for future boots.
@@ -54,14 +89,16 @@ The following uses Core's official `rpcauth.py`. It creates a new salted `rpcaut
 
 ```sh
 cd ~/tracey-sof
+make inputs
 umask 077
-mkdir -p cache
 python3 - <<'PY'
 import json
+import os
 import pathlib
 import subprocess
 
-root = pathlib.Path.cwd()
+root = pathlib.Path(os.environ.get("TRACEY_INPUTS", pathlib.Path.home() / "tracey-inputs")).expanduser()
+(root / "cache").mkdir(mode=0o700, parents=True, exist_ok=True)
 result = json.loads(subprocess.check_output([
     "python3",
     "/opt/bitcoin-core/32.1/share/rpcauth/rpcauth.py",
@@ -72,9 +109,6 @@ result = json.loads(subprocess.check_output([
     "BITCOIND_RPC_URL=http://127.0.0.1:8332\n"
     "BITCOIND_RPC_USER=tracey-sof\n"
     f"BITCOIND_RPC_PASSWORD={result['password']}\n"
-    "DATA_DIR=./data\n"
-    "OUT_DIR=./out\n"
-    "CACHE_DIR=./cache\n"
     "TRACE_MAX_DEPTH=25\n"
     "TRACE_MAX_TRANSACTIONS=10000\n"
 )
@@ -83,17 +117,17 @@ result = json.loads(subprocess.check_output([
 PY
 ```
 
-Both files are ignored by Git. If either already exists, do not overwrite it. Re-running the generator produces a different salt/password, so update both the node configuration and `node.env` together if you intentionally regenerate credentials.
+Both files live in the private inputs tree outside Git. If either already exists, do not overwrite it. Re-running the generator produces a different salt/password, so update both the node configuration and `node.env` together if you intentionally regenerate credentials. Add `MERCHANT`, `PROVIDER`, and `SOF_EXCHANGE_LABELS` to `node.env` only if you need bank matching or outbound gap detection.
 
 ## 4. Activate the application RPC user
 
-Back up the configuration and append `cache/local-rpcauth.conf` to `/run/media/admin/BLOCKCHAIN/bitcoin-full/bitcoin.conf`. If that file uses INI sections, place the `rpcauth=` line in the **global** section instead of simply appending it inside a section.
+Back up the configuration and append `$TRACEY_INPUTS/cache/local-rpcauth.conf` to `/mnt/blockchain/bitcoin.conf`. If that file uses INI sections, place the `rpcauth=` line in the **global** section instead of simply appending it inside a section.
 
 ```sh
-CONF=/run/media/admin/BLOCKCHAIN/bitcoin-full/bitcoin.conf
+CONF=/mnt/blockchain/bitcoin.conf
 sudo cp -a "$CONF" "$CONF.before-tracey-sof"
 if ! sudo grep -q '^rpcauth=tracey-sof:' "$CONF"; then
-  sudo tee -a "$CONF" < cache/local-rpcauth.conf >/dev/null
+  sudo tee -a "$CONF" < "$TRACEY_INPUTS/cache/local-rpcauth.conf" >/dev/null
 fi
 sudo systemctl enable bitcoind
 sudo systemctl restart bitcoind
@@ -112,10 +146,10 @@ If this returns HTTP 401: confirm the `rpcauth` line is in the global section, t
 ## 5. Require a usable chain snapshot
 
 ```sh
-sudo -u admin bitcoin-cli \
-  -datadir=/run/media/admin/BLOCKCHAIN/bitcoin-full getblockchaininfo
-sudo -u admin bitcoin-cli \
-  -datadir=/run/media/admin/BLOCKCHAIN/bitcoin-full getindexinfo
+sudo -u bitcoin bitcoin-cli \
+  -datadir=/mnt/blockchain getblockchaininfo
+sudo -u bitcoin bitcoin-cli \
+  -datadir=/mnt/blockchain getindexinfo
 ```
 
 Required before an audit:
@@ -137,14 +171,15 @@ That test uses committed public mainnet fixtures, not your addresses or purchase
 
 ## 6. Add your real inputs
 
-Copy the templates and replace **every placeholder** with actual public data:
+Create the private tree and replace **every placeholder** with actual public data:
 
 ```sh
-install -d -m 700 data/inbox
-install -m 600 examples/owned.example.json data/owned.json
-install -m 600 examples/purchases.example.json data/purchases.json
-install -m 600 examples/annotations.example.json data/annotations.json
-install -m 600 examples/trace-policy.example.json data/trace-policy.json
+make inputs
+install -d -m 700 "$TRACEY_INPUTS/data/inbox"
+install -m 600 examples/owned.example.json "$TRACEY_INPUTS/data/owned.json"
+install -m 600 examples/purchases.example.json "$TRACEY_INPUTS/data/purchases.json"
+install -m 600 examples/annotations.example.json "$TRACEY_INPUTS/data/annotations.json"
+install -m 600 examples/trace-policy.example.json "$TRACEY_INPUTS/data/trace-policy.json"
 ```
 
 Read `docs/inputs.md` for formats and `docs/bitcoin-core.md` for node settings. Keep only public keys and addresses: never put seeds, WIF, xprvs, private descriptors, or passphrases anywhere in the project.
@@ -154,22 +189,43 @@ Read `docs/inputs.md` for formats and `docs/bitcoin-core.md` for node settings. 
 - `trace-policy.json`: optional limits. Empty optional stop thresholds are disabled.
 - `annotations.json`: start with an empty template; the loopback UI stores labels there.
 
+Paths written as `out/` and `cache/` in this document mean
+`$TRACEY_INPUTS/out` and `$TRACEY_INPUTS/cache`.
+
 Do not use the ATM operator/payment destination (`paid_to`) address as source-of-funds evidence. An exact purchase txid or received outpoint is stronger evidence than an address or amount heuristic. See `docs/methodology.md`.
 
 Optional intake for receipts and address lists:
 
 ```sh
-# Put documents/CSV/TXT/JSON under data/inbox/
+# Put documents/CSV/TXT/JSON under $TRACEY_INPUTS/data/inbox/
 make intake
 make resolve-intake
 make review-intake
-./bin/sof review-intake -data-dir ./data --accept <candidate-id> --role received_at
+./bin/sof review-intake -data-dir "$TRACEY_INPUTS/data" --accept <candidate-id> --role received_at
 # Add purchase ID/date/provider as appropriate, then:
 make promote-intake
 make validate
 ```
 
 OCR candidates always begin `unknown` and require explicit human acceptance. A policy stop is a review flag, not purchase proof.
+
+### Optional bank-matching workflow
+
+Run the matcher once to generate candidates, review `out/bank-matches.csv`, then
+explicitly confirm each reviewed `kind|ID` key. `APPLY=1` without `CONFIRM`
+rejects the command rather than attaching evidence from a heuristic match.
+
+```sh
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv"
+# Review the generated candidate list and amounts, then:
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv" \
+  APPLY=1 CONFIRM="purchase|your-purchase-id"
+```
+
+Merchant and date matching alone only proposes candidates. A mismatch with an
+existing expected fiat amount is not silently replaced. After confirmation, run
+`make audit` so the new purchase evidence is applied to the ancestry, then
+review `out/statement-requests.csv` and `out/overview.pdf`.
 
 ## 7. Validate, trace, and review
 
@@ -195,46 +251,54 @@ Check every file before sharing. `accountant.zip` can contain addresses, xpubs, 
 ## 8. Optional verification
 
 ```sh
-make verify         # Offline tests and privacy checks
-make release-check # The above plus public-fixture checks through your Core node
+make verify              # Offline tests, coverage, and working-tree privacy scan
+make history-leak-check  # Advisory scan of every git ref; reports, does not block
+make release-check       # The above plus public-fixture checks through your Core node
 ```
 
-Network dependencies: runtime transaction queries go only to the configured Core node. `setup`/`vendor` may fetch Go modules; `provision` fetches public packages; `core-download` uses `bitcoincore.org`. No transaction explorer or analytics service is used. Privileged install targets are not required for daily reporting.
+`make leak-check` is the same working-tree scan used by `make verify`. Full-history
+scanning is advisory while the documented historical path examples are reviewed.
+Network dependencies: runtime transaction queries go only to the configured Core
+node. `setup`/`vendor` may fetch Go modules; `provision` fetches public packages;
+`core-download` uses `bitcoincore.org`. No transaction explorer or analytics
+service is used. Privileged install targets are not required for daily reporting.
 
 ## 9. Safe disconnection of the blockchain SSD
 
-Do not unplug `/dev/sda` while Core is running or its filesystem is mounted. Stop and unmount it first:
+Do not unplug the drive while Core is running or its filesystem is mounted. Stop
+and unmount it first. Substitute your actual mount point (`/mnt/blockchain` below)
+and block device (`/dev/sdX`) from `findmnt` and `lsblk`:
 
 ```sh
 cd ~
 sudo systemctl stop bitcoind
 sync
-sudo umount /run/media/admin/BLOCKCHAIN
-findmnt /run/media/admin/BLOCKCHAIN
+sudo umount /mnt/blockchain
+findmnt /mnt/blockchain
 ```
 
 Only if `findmnt` returns no mount entry:
 
 ```sh
-udisksctl power-off --block-device=/dev/sda
+udisksctl power-off --block-device=/dev/sdX
 ```
 
 Optional `~/.bashrc` alias:
 
 ```sh
-alias unmount-blockchain='cd "$HOME" && sudo systemctl stop bitcoind && sync && sudo umount /run/media/admin/BLOCKCHAIN && echo "Blockchain unmounted; safe to power off /dev/sda"'
+alias unmount-blockchain='cd "$HOME" && sudo systemctl stop bitcoind && sync && sudo umount /mnt/blockchain && echo "Blockchain unmounted; safe to power off /dev/sdX"'
 ```
 
 Add it without duplicating an existing alias:
 
 ```sh
 grep -q '^alias unmount-blockchain=' ~/.bashrc || cat >> ~/.bashrc <<'EOF'
-alias unmount-blockchain='cd "$HOME" && sudo systemctl stop bitcoind && sync && sudo umount /run/media/admin/BLOCKCHAIN && echo "Blockchain unmounted; safe to power off /dev/sda"'
+alias unmount-blockchain='cd "$HOME" && sudo systemctl stop bitcoind && sync && sudo umount /mnt/blockchain && echo "Blockchain unmounted; safe to power off /dev/sdX"'
 EOF
 source ~/.bashrc
 ```
 
-If unmount fails as busy, do not disconnect the drive. Find remaining users with `fuser -vm /run/media/admin/BLOCKCHAIN` and fix them. Avoid lazy/forced unmounts on the live blockchain filesystem. After reconnecting it, run `sudo systemctl start bitcoind` and wait for synchronization.
+If unmount fails as busy, do not disconnect the drive. Find remaining users with `fuser -vm /mnt/blockchain` and fix them. Avoid lazy/forced unmounts on the live blockchain filesystem. After reconnecting it, run `sudo systemctl start bitcoind` and wait for synchronization.
 
 ## Final readiness checklist
 

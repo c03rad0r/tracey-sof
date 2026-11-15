@@ -39,6 +39,8 @@ func coverageBundleFixture(t *testing.T) (string, string, model.PurchaseFile, ma
 		t.Fatal(err)
 	}
 	coverageWriteFile(t, filepath.Join(outDir, "report.pdf"), []byte("%PDF-1.7\nverified test artifact\n"))
+	coverageWriteFile(t, filepath.Join(outDir, "statement-requests.csv"), []byte("event_type,event_id\n"))
+	coverageWriteFile(t, filepath.Join(outDir, "bank-matches.csv"), []byte("event_type,event_id\n"))
 	coverageWriteFile(t, filepath.Join(dataDir, "owned.json"), []byte("{\n  \"schema_version\": 1\n}\n"))
 	coverageWriteFile(t, filepath.Join(dataDir, "purchases.json"), []byte("{\n  \"schema_version\": 1, \"purchases\": []\n}\n"))
 	coverageWriteFile(t, filepath.Join(dataDir, "annotations.json"), []byte("{\"schema_version\":1}\n"))
@@ -96,7 +98,7 @@ func TestCoverageZIPBytesRejectsOversizedEntryName(t *testing.T) {
 
 func TestCoverageBundleVerifiedArtifactsReproducibleManifest(t *testing.T) {
 	dataDir, outDir, purchases, expected := coverageBundleFixture(t)
-	for _, name := range []string{"README-accountant.txt", "report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"} {
+	for _, name := range []string{"README-accountant.txt", "report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "exchange-payouts-unaccounted.csv", "exchange-outflows-unaccounted.csv", "exchange-payout-months.csv", "exchange-outflow-months.csv", "statement-requests.csv", "bank-matches.csv", "report.html", "report.svg", "report.pdf"} {
 		name := name
 		var source string
 		if name == "README-accountant.txt" {
@@ -256,7 +258,7 @@ func TestCoverageBundleRejectsMissingAndChangedEvidence(t *testing.T) {
 }
 
 func TestCoverageBundleReportsAndInputsErrors(t *testing.T) {
-	requiredReports := []string{"report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"}
+	requiredReports := []string{"report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "exchange-payouts-unaccounted.csv", "exchange-outflows-unaccounted.csv", "exchange-payout-months.csv", "exchange-outflow-months.csv", "statement-requests.csv", "report.html", "report.svg", "report.pdf"}
 	for _, missing := range requiredReports {
 		t.Run("missing "+missing, func(t *testing.T) {
 			root := t.TempDir()
@@ -321,4 +323,60 @@ func TestCoverageBundleReportsAndInputsErrors(t *testing.T) {
 			t.Fatal("directory named annotations.json accepted as an input file")
 		}
 	})
+}
+
+func TestCoverageBundleBankMatchesReadError(t *testing.T) {
+	dataDir, outDir, purchases, _ := coverageBundleFixture(t)
+	if err := os.Remove(filepath.Join(outDir, "bank-matches.csv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(outDir, "bank-matches.csv"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err == nil {
+		t.Fatal("directory bank-matches.csv accepted")
+	}
+}
+
+func TestCoverageBundleOptionalOverview(t *testing.T) {
+	dataDir, outDir, purchases, _ := coverageBundleFixture(t)
+	html := []byte("<html>overview</html>\n")
+	pdf := []byte("%PDF-1.7\noverview\n")
+	coverageWriteFile(t, filepath.Join(outDir, "overview.html"), html)
+	coverageWriteFile(t, filepath.Join(outDir, "overview.pdf"), pdf)
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := os.ReadFile(filepath.Join(outDir, "accountant.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, contents := coverageReadZIP(t, archive)
+	if string(contents["overview.html"]) != string(html) || string(contents["overview.pdf"]) != string(pdf) {
+		t.Errorf("overview entries missing or changed: %q / %q", contents["overview.html"], contents["overview.pdf"])
+	}
+
+	for _, name := range []string{"overview.html", "overview.pdf"} {
+		if err := os.Remove(filepath.Join(outDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err != nil {
+		t.Fatal(err)
+	}
+	archive, err = os.ReadFile(filepath.Join(outDir, "accountant.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, contents = coverageReadZIP(t, archive)
+	if _, exists := contents["overview.pdf"]; exists {
+		t.Error("missing overview should not be bundled")
+	}
+
+	if err := os.Mkdir(filepath.Join(outDir, "overview.pdf"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Bundle(testReport(), purchases, dataDir, outDir); err == nil {
+		t.Fatal("directory overview.pdf accepted")
+	}
 }

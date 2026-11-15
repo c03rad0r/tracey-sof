@@ -12,14 +12,32 @@ import (
 	"time"
 )
 
+// PDFOptions controls report printing.
+type PDFOptions struct {
+	// Unredacted renders identifiers and amounts instead of [redacted] placeholders.
+	// Callers must request this explicitly; the default output stays safe to share.
+	Unredacted bool
+}
+
+// PDF renders report.html with the default redacted display.
 func PDF(ctx context.Context, outDir, browser string) error {
+	return PDFWithOptions(ctx, outDir, browser, PDFOptions{})
+}
+
+// PDFWithOptions renders report.html, optionally with identifiers visible.
+func PDFWithOptions(ctx context.Context, outDir, browser string, options PDFOptions) error {
+	return PrintHTML(ctx, outDir, "report.html", "report.pdf", browser, options)
+}
+
+// PrintHTML renders one generated HTML file into a PDF in the same directory.
+func PrintHTML(ctx context.Context, outDir, htmlName, pdfName, browser string, options PDFOptions) error {
 	absoluteOut, err := filepath.Abs(outDir)
 	if err != nil {
 		return fmt.Errorf("resolve report output directory: %w", err)
 	}
 	outDir = absoluteOut
 	if browser == "" {
-		for _, candidate := range []string{"chromium", "chromium-browser", "google-chrome"} {
+		for _, candidate := range []string{"google-chrome", "chromium", "chromium-browser"} {
 			if path, err := exec.LookPath(candidate); err == nil {
 				browser = path
 				break
@@ -29,16 +47,22 @@ func PDF(ctx context.Context, outDir, browser string) error {
 	if browser == "" {
 		return fmt.Errorf("Chromium is required for PDF output; set CHROMIUM to a local executable")
 	}
-	if _, err := os.Stat(filepath.Join(outDir, "report.html")); err != nil {
-		return fmt.Errorf("report.html is required before PDF export: %w", err)
+	if _, err := os.Stat(filepath.Join(outDir, htmlName)); err != nil {
+		return fmt.Errorf("%s is required before PDF export: %w", htmlName, err)
 	}
 	profile, err := os.MkdirTemp(outDir, ".chromium-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(profile)
-	pdfPath := filepath.Join(outDir, "report.pdf")
-	htmlURL := (&url.URL{Scheme: "file", Path: filepath.Join(outDir, "report.html")}).String()
+	pdfPath := filepath.Join(outDir, pdfName)
+	htmlLocation := &url.URL{Scheme: "file", Path: filepath.Join(outDir, htmlName)}
+	if options.Unredacted {
+		htmlLocation.RawQuery = ""
+	} else {
+		htmlLocation.RawQuery = "redact=1"
+	}
+	htmlURL := htmlLocation.String()
 	args := []string{"--headless", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--no-first-run", "--no-default-browser-check", "--no-pdf-header-footer", "--user-data-dir=" + profile, "--print-to-pdf=" + pdfPath, htmlURL}
 	command := exec.CommandContext(ctx, browser, args...)
 	var output bytes.Buffer

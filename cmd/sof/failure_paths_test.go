@@ -13,6 +13,73 @@ import (
 )
 
 func TestDiscoverCommandErrorPropagation(t *testing.T) {
+	t.Run("graphs requires a trace", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.graphs(context.Background(), p); err == nil {
+			t.Fatal("expected a missing-trace error")
+		}
+	})
+
+	t.Run("graphs write failure", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		saveCLIFixtureTrace(t, p)
+		blocked := filepath.Join(t.TempDir(), "out-file")
+		if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		p.outDir = blocked
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.graphs(context.Background(), p); err == nil {
+			t.Fatal("expected a graph write error")
+		}
+	})
+
+	t.Run("graphs flag error", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		if err := run(context.Background(), []string{"graphs", "-not-a-flag"}, &stdout, &stderr); err == nil {
+			t.Fatal("expected a flag parse error")
+		}
+	})
+
+	t.Run("gaps requires a trace", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.gaps(context.Background(), p, true, true, true, false); err == nil {
+			t.Fatal("expected a missing-trace error")
+		}
+	})
+
+	t.Run("bank-import errors", func(t *testing.T) {
+		p := newCLIPaths(t, false)
+		writeCLIInputs(t, p, false)
+		var stdout, stderr bytes.Buffer
+		app := application{stdout: &stdout, stderr: &stderr}
+		if err := app.bankImport(p, filepath.Join(t.TempDir(), "missing.csv"), "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
+			t.Fatal("missing bank file accepted")
+		}
+		bad := filepath.Join(t.TempDir(), "bad.csv")
+		if err := os.WriteFile(bad, []byte("not;a;bank;file\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.bankImport(p, bad, "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
+			t.Fatal("invalid bank file accepted")
+		}
+		saveCLIFixtureTrace(t, p)
+		if err := app.bankImport(p, bad, "Example Merchant", "Example Exchange", 3, false, ""); err == nil {
+			t.Fatal("invalid bank file with trace accepted")
+		}
+		if err := app.statementRequests(p); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("input error", func(t *testing.T) {
 		p := newCLIPaths(t, false)
 		var stdout, stderr bytes.Buffer
@@ -210,7 +277,7 @@ func TestReportAndExportWriteFailures(t *testing.T) {
 		saveCLIFixtureTrace(t, p)
 		var stdout, stderr bytes.Buffer
 		app := application{stdout: &stdout, stderr: &stderr}
-		if err := app.report(context.Background(), p, false, false); err != nil {
+		if err := app.report(context.Background(), p, false, false, false); err != nil {
 			t.Fatal(err)
 		}
 		err := app.export(p, purchases)

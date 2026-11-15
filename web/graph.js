@@ -104,6 +104,76 @@
     };
   }
 
+  // layoutGraphHeight places one column per distinct block height present in
+  // the graph, skipping empty heights. Columns are ordered oldest first; nodes
+  // with no known height are grouped in a leading "unknown height" column.
+  function layoutGraphHeight(graph, metaOf) {
+    const normalized = normalizeGraph(graph);
+    const nodes = normalized.nodes;
+    const edges = normalized.edges;
+    if (nodes.length === 0) {
+      return { nodes: [], edges: [], positions: [], headers: [], width: 0, height: 0, maxDepth: -1 };
+    }
+    const metaFor = typeof metaOf === "function" ? metaOf : function () { return {}; };
+    const dates = new Map();
+    const buckets = new Map();
+    for (const node of nodes) {
+      const meta = metaFor(node) || {};
+      const height = Number.isSafeInteger(meta.height) && meta.height > 0 ? meta.height : 0;
+      const date = typeof meta.date === "string" ? meta.date : "";
+      dates.set(node.id, date);
+      if (!buckets.has(height)) {
+        buckets.set(height, []);
+      }
+      buckets.get(height).push(node);
+    }
+    const heights = Array.from(buckets.keys()).sort(function (left, right) { return left - right; });
+    const nodeWidth = 300;
+    const nodeHeight = 150;
+    const positions = new Array(nodes.length);
+    const index = new Map(nodes.map(function (node, position) { return [node.id, position]; }));
+    const headers = [];
+    let maxRows = 0;
+    heights.forEach(function (height, column) {
+      const entries = buckets.get(height).slice().sort(function (left, right) {
+        const leftDate = dates.get(left.id) || "";
+        const rightDate = dates.get(right.id) || "";
+        if (leftDate !== rightDate) {
+          return leftDate.localeCompare(rightDate);
+        }
+        return left.id.localeCompare(right.id);
+      });
+      const x = 190 + column * 340;
+      const knownDate = entries.map(function (node) { return dates.get(node.id); })
+        .find(function (value) { return value; });
+      const label = height > 0
+        ? height.toLocaleString("en-US") + (knownDate ? " · " + knownDate : "")
+        : "unknown height";
+      headers.push({ label: label, x: x - 140, y: 20 });
+      entries.forEach(function (node, row) {
+        positions[index.get(node.id)] = {
+          id: node.id,
+          depth: column,
+          row: row,
+          x: x,
+          y: 110 + row * 210,
+          width: nodeWidth,
+          height: nodeHeight
+        };
+      });
+      maxRows = Math.max(maxRows, entries.length);
+    });
+    return {
+      nodes: nodes,
+      edges: edges,
+      positions: positions,
+      headers: headers,
+      width: 340 * heights.length + 40,
+      height: Math.max(240, 20 + maxRows * 210),
+      maxDepth: heights.length - 1
+    };
+  }
+
   function layoutGraph(graph) {
     const normalized = normalizeGraph(graph);
     const nodes = normalized.nodes;
@@ -151,16 +221,16 @@
       return left.depth - right.depth || left.index - right.index;
     });
     const positions = new Array(count);
-    const nodeWidth = 240;
-    const nodeHeight = 108;
+    const nodeWidth = 300;
+    const nodeHeight = 150;
     for (const item of sorted) {
       const row = columnRows[item.depth];
       positions[item.index] = {
         id: nodes[item.index].id,
         depth: item.depth,
         row: row,
-        x: 32 + (maxDepth - item.depth) * 320,
-        y: 32 + row * 158,
+        x: 32 + (maxDepth - item.depth) * 380,
+        y: 32 + row * 210,
         width: nodeWidth,
         height: nodeHeight
       };
@@ -170,8 +240,8 @@
       nodes: nodes,
       edges: edges,
       positions: positions,
-      width: 64 + (maxDepth + 1) * 320,
-      height: Math.max(180, 64 + Math.max.apply(null, columnRows) * 158),
+      width: 64 + (maxDepth + 1) * 380,
+      height: Math.max(260, 64 + Math.max.apply(null, columnRows) * 210),
       maxDepth: maxDepth
     };
   }
@@ -183,6 +253,17 @@
     return value.toLocaleString("en-US") + " sats";
   }
 
+  function formatBtc(value) {
+    if (!Number.isSafeInteger(value)) {
+      return "—";
+    }
+    const negative = value < 0;
+    const absolute = Math.abs(value);
+    const whole = Math.floor(absolute / 100000000);
+    const fraction = String(absolute % 100000000).padStart(8, "0");
+    return (negative ? "-" : "") + whole + "." + fraction + " BTC";
+  }
+
   return Object.freeze({
     uniqueStrings: uniqueStrings,
     utxoMatches: utxoMatches,
@@ -190,6 +271,8 @@
     normalizeGraph: normalizeGraph,
     selectGraph: selectGraph,
     layoutGraph: layoutGraph,
-    formatSats: formatSats
+    layoutGraphHeight: layoutGraphHeight,
+    formatSats: formatSats,
+    formatBtc: formatBtc
   });
 }));

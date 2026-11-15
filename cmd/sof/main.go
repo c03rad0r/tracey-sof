@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"tracey-sof/internal/intake"
 	"tracey-sof/internal/model"
@@ -19,20 +21,30 @@ func main() {
 	}
 }
 
+// privateInputsRoot returns the private data tree. The public repository never
+// contains financial inputs; set TRACEY_INPUTS to relocate the tree.
+func privateInputsRoot() string {
+	if root := strings.TrimSpace(os.Getenv("TRACEY_INPUTS")); root != "" {
+		return root
+	}
+	return filepath.Join(os.Getenv("HOME"), "tracey-inputs")
+}
+
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: sof <validate|node-check|discover|trace|report|audit|ui|export|example|test-node|pdf|intake|resolve-intake|review-intake|promote-intake> [flags]")
 	}
 	app := application{stdout: stdout, stderr: stderr}
+	root := privateInputsRoot()
 	common := func(name string) (*flag.FlagSet, *paths) {
 		fs := flag.NewFlagSet(name, flag.ContinueOnError)
 		fs.SetOutput(stderr)
 		p := &paths{}
-		fs.StringVar(&p.dataDir, "data-dir", "./data", "directory containing owned.json, purchases.json and annotations.json")
-		fs.StringVar(&p.cacheDir, "cache-dir", "./cache", "private chain cache directory")
-		fs.StringVar(&p.outDir, "out-dir", "./out", "report output directory")
+		fs.StringVar(&p.dataDir, "data-dir", filepath.Join(root, "data"), "directory containing owned.json, purchases.json and annotations.json")
+		fs.StringVar(&p.cacheDir, "cache-dir", filepath.Join(root, "cache"), "private chain cache directory")
+		fs.StringVar(&p.outDir, "out-dir", filepath.Join(root, "out"), "report output directory")
 		fs.StringVar(&p.fixtures, "fixtures", "./testdata/mainnet", "mainnet fixture directory")
-		fs.StringVar(&p.inbox, "inbox", "./data/inbox", "directory containing receipts, images, CSV, TXT, or JSON sources")
+		fs.StringVar(&p.inbox, "inbox", filepath.Join(root, "data", "inbox"), "directory containing receipts, images, CSV, TXT, or JSON sources")
 		return fs, p
 	}
 	switch args[0] {
@@ -62,12 +74,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return app.trace(ctx, *p)
 	case "report":
 		fs, p := common("report")
+		unredacted := fs.Bool("unredacted", true, "print identifiers and amounts (default); set false to redact")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return app.report(ctx, *p, false, true)
+		return app.report(ctx, *p, false, true, *unredacted)
 	case "audit":
 		fs, p := common("audit")
+		unredacted := fs.Bool("unredacted", true, "print identifiers and amounts (default); set false to redact")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -80,13 +94,65 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err := app.trace(ctx, *p); err != nil {
 			return err
 		}
-		return app.report(ctx, *p, false, true)
+		return app.report(ctx, *p, false, true, *unredacted)
 	case "ui":
 		fs, p := common("ui")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		return app.ui(ctx, *p)
+	case "overview":
+		fs, p := common("overview")
+		noPDF := fs.Bool("no-pdf", false, "write only overview.html")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.overview(ctx, *p, *noPDF)
+	case "graphs":
+		fs, p := common("graphs")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.graphs(ctx, *p)
+	case "bank-import":
+		fs, p := common("bank-import")
+		bankFile := fs.String("bank-file", "", "bank CSV export")
+		merchants := fs.String("merchant", "", "comma-separated merchant keywords (required)")
+		provider := fs.String("provider", "", "provider name for created purchase records (required)")
+		window := fs.Int("window-days", 3, "date window around each on-chain event")
+		apply := fs.Bool("apply", false, "attach explicitly confirmed evidence and create purchase records")
+		confirm := fs.String("confirm", "", "comma-separated reviewed purchase|id or inbound_payout|id confirmations")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *bankFile == "" {
+			return fmt.Errorf("bank-import requires -bank-file")
+		}
+		if strings.TrimSpace(*merchants) == "" {
+			return fmt.Errorf("bank-import requires -merchant")
+		}
+		if strings.TrimSpace(*provider) == "" {
+			return fmt.Errorf("bank-import requires -provider")
+		}
+		return app.bankImport(*p, *bankFile, *merchants, *provider, *window, *apply, *confirm)
+	case "statement-requests":
+		fs, p := common("statement-requests")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return app.statementRequests(*p)
+	case "gaps":
+		fs, p := common("gaps")
+		inflowOnly := fs.Bool("inflow", false, "print only inbound exchange payouts")
+		outflowOnly := fs.Bool("outflow", false, "print only outbound exchange transfers")
+		strict := fs.Bool("strict", false, "exit non-zero while unaccounted exchange payouts remain")
+		includeOutflows := fs.Bool("include-outflows", false, "make -strict fail on outbound transfers too")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		inflow := *inflowOnly || !*outflowOnly
+		outflow := *outflowOnly || !*inflowOnly
+		return app.gaps(ctx, *p, inflow, outflow, *strict, *includeOutflows)
 	case "export":
 		fs, p := common("export")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -96,7 +162,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := app.report(ctx, *p, false, true); err != nil {
+		if err := app.report(ctx, *p, false, true, true); err != nil {
 			return err
 		}
 		return app.export(*p, purchases)
@@ -114,10 +180,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return app.testNode(ctx, *p)
 	case "pdf":
 		fs, p := common("pdf")
+		unredacted := fs.Bool("unredacted", true, "print identifiers and amounts (default); set false to redact")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return app.pdf(ctx, *p)
+		return app.pdf(ctx, *p, *unredacted)
 	case "intake":
 		fs, p := common("intake")
 		maxPages := fs.Int("max-pages", 20, "maximum PDF pages to OCR")

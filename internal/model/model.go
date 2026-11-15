@@ -8,7 +8,7 @@ import (
 )
 
 const SchemaVersion = 1
-const SoftwareVersion = "tracey-sof/0.3.0"
+const SoftwareVersion = "tracey-sof/0.4.0"
 
 const (
 	DefaultMaxHops         = 25
@@ -160,21 +160,30 @@ type Fiat struct {
 }
 
 type Purchase struct {
-	ID         string     `json:"id"`
-	Date       string     `json:"date,omitempty"`
-	Provider   string     `json:"provider,omitempty"`
-	TxIDs      []string   `json:"txids,omitempty"`
-	Addresses  []string   `json:"addresses,omitempty"`
-	Outpoints  []Outpoint `json:"outpoints,omitempty"`
-	AmountSats *int64     `json:"amount_sats,omitempty"`
-	Fiat       *Fiat      `json:"fiat,omitempty"`
-	Artifacts  []Artifact `json:"artifacts,omitempty"`
-	Notes      string     `json:"notes,omitempty"`
+	ID            string     `json:"id"`
+	Date          string     `json:"date,omitempty"`
+	StatementDate string     `json:"statement_date,omitempty"`
+	Height        int64      `json:"height,omitempty"`
+	Provider      string     `json:"provider,omitempty"`
+	TxIDs         []string   `json:"txids,omitempty"`
+	Addresses     []string   `json:"addresses,omitempty"`
+	Outpoints     []Outpoint `json:"outpoints,omitempty"`
+	AmountSats    *int64     `json:"amount_sats,omitempty"`
+	Fiat          *Fiat      `json:"fiat,omitempty"`
+	Artifacts     []Artifact `json:"artifacts,omitempty"`
+	Notes         string     `json:"notes,omitempty"`
 }
 
 type Annotation struct {
-	Label string `json:"label,omitempty"`
-	Note  string `json:"note,omitempty"`
+	Label     string            `json:"label,omitempty"`
+	Note      string            `json:"note,omitempty"`
+	ValueSats *int64            `json:"value_sats,omitempty"`
+	Fiat      map[string]string `json:"fiat,omitempty"`
+	Rate      map[string]string `json:"rate,omitempty"`
+	Time      string            `json:"time,omitempty"`
+	Height    int64             `json:"height,omitempty"`
+	KeyPath   string            `json:"keypath,omitempty"`
+	Origin    string            `json:"origin,omitempty"`
 }
 
 type PurchaseLink struct {
@@ -230,6 +239,7 @@ type AnnotationFile struct {
 	Transactions  map[string]Annotation `json:"transactions,omitempty"`
 	Addresses     map[string]Annotation `json:"addresses,omitempty"`
 	Outpoints     map[string]Annotation `json:"outpoints,omitempty"`
+	XPubs         map[string]Annotation `json:"xpubs,omitempty"`
 	PurchaseLinks []PurchaseLink        `json:"purchase_links,omitempty"`
 }
 
@@ -247,6 +257,8 @@ type GraphNode struct {
 	TerminalReason string   `json:"terminal_reason,omitempty"`
 	TerminalDetail string   `json:"terminal_detail,omitempty"`
 	ReviewRequired bool     `json:"review_required,omitempty"`
+	BlockTime      string   `json:"block_time,omitempty"`
+	Height         int64    `json:"height,omitempty"`
 }
 
 type GraphEdge struct {

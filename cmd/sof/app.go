@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"tracey-sof/internal/bank"
 	"tracey-sof/internal/core"
 	"tracey-sof/internal/fixtures"
 	"tracey-sof/internal/input"
@@ -318,17 +319,203 @@ func (a application) buildReport(p paths) (model.Report, error) {
 	return report, err
 }
 
-func (a application) pdf(ctx context.Context, p paths) error {
+func (a application) pdf(ctx context.Context, p paths, unredacted bool) error {
 	pdfCtx, cancel := context.WithTimeout(ctx, reportfiles.PDFTimeout())
 	defer cancel()
-	if err := reportfiles.PDF(pdfCtx, p.outDir, env("CHROMIUM")); err != nil {
+	if err := reportfiles.PDFWithOptions(pdfCtx, p.outDir, env("CHROMIUM"), reportfiles.PDFOptions{Unredacted: unredacted}); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "report.pdf"))
 	return nil
 }
 
-func (a application) report(ctx context.Context, p paths, server, includePDF bool) error {
+func (a application) gaps(_ context.Context, p paths, inflow, outflow, strict, includeOutflows bool) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	printGaps(a.stdout, report, inflow, outflow)
+	if strict {
+		if includeOutflows {
+			return reportfiles.GapCheckAll(report)
+		}
+		return reportfiles.GapCheck(report)
+	}
+	return nil
+}
+
+func printGaps(w io.Writer, report model.Report, inflow, outflow bool) {
+	if inflow {
+		rows := reportfiles.ExchangeGaps(report)
+		fmt.Fprintf(w, "== INFLOW: unaccounted exchange payouts (%d, %d months) ==\n", len(rows), reportfiles.ExchangeGapMonths(report))
+		for _, row := range rows {
+			fmt.Fprintf(w, "  %s  %s  %d sats  %s\n", row.DateUTC, row.TxID, row.AmountSats, row.Label)
+		}
+	}
+	if outflow {
+		rows := reportfiles.ExchangeOutflows(report)
+		fmt.Fprintf(w, "== OUTFLOW: transfers without sale evidence (%d, %d months) ==\n", len(rows), reportfiles.ExchangeOutflowMonths(report))
+		for _, row := range rows {
+			fmt.Fprintf(w, "  %s  %s  %d sats  %s\n", row.DateUTC, row.TxID, row.AmountSats, row.Label)
+		}
+	}
+}
+
+func (a application) graphs(_ context.Context, p paths) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	written, err := reportfiles.WriteGraphs(report, p.outDir)
+	if err != nil {
+		return err
+	}
+	for _, path := range written {
+		fmt.Fprintf(a.stdout, "wrote %s\n", path)
+	}
+	return nil
+}
+
+func (a application) overview(ctx context.Context, p paths, noPDF bool) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	cache, err := bank.LoadCache(filepath.Join(p.cacheDir, "bank-matches.json"))
+	if err != nil {
+		return err
+	}
+	if err := reportfiles.WriteOverview(report, cache, p.outDir); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "overview.html"))
+	if noPDF {
+		return nil
+	}
+	pdfCtx, cancel := context.WithTimeout(ctx, reportfiles.PDFTimeout())
+	defer cancel()
+	if err := reportfiles.PrintHTML(pdfCtx, p.outDir, "overview.html", "overview.pdf", env("CHROMIUM"), reportfiles.PDFOptions{Unredacted: true}); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "overview.pdf"))
+	return nil
+}
+
+func (a application) writeStatementRequests(p paths, report model.Report) error {
+	cache, err := bank.LoadCache(filepath.Join(p.cacheDir, "bank-matches.json"))
+	if err != nil {
+		return err
+	}
+	data, _ := reportfiles.StatementRequestsCSVBytes(report, cache)
+	return reportfiles.AtomicWrite(filepath.Join(p.outDir, "statement-requests.csv"), data, 0o600)
+}
+
+func (a application) statementRequests(p paths) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	cache, err := bank.LoadCache(filepath.Join(p.cacheDir, "bank-matches.json"))
+	if err != nil {
+		return err
+	}
+	if err := a.writeStatementRequests(p, report); err != nil {
+		return err
+	}
+	matched, requests := reportfiles.StatementRequestSummary(report, cache)
+	fmt.Fprintf(a.stdout, "bank evidence matched: %d; physical statements requested: %d\n", matched, requests)
+	fmt.Fprintf(a.stdout, "wrote %s\n", filepath.Join(p.outDir, "statement-requests.csv"))
+	return nil
+}
+
+func (a application) bankImport(p paths, bankFile, merchants, provider string, windowDays int, apply bool, confirm string) error {
+	report, err := a.buildReport(p)
+	if err != nil {
+		return err
+	}
+	var confirmed map[string]bool
+	if apply {
+		confirmed, err = bank.ParseConfirmationIDs(confirm)
+		if err != nil {
+			return err
+		}
+	}
+	handle, err := os.Open(bankFile)
+	if err != nil {
+		return fmt.Errorf("open bank file: %w", err)
+	}
+	transactions, parseErr := bank.ParseCSV(handle)
+	handle.Close()
+	if parseErr != nil {
+		return parseErr
+	}
+	artifact, digest, err := bank.StoreArtifact(p.dataDir, bankFile)
+	if err != nil {
+		return err
+	}
+	events := reportfiles.StatementEvents(report)
+	records := bank.MatchEvents(events, transactions, strings.Split(merchants, ","), windowDays)
+	for index := range records {
+		records[index].Confirmed = confirmed[records[index].Key()]
+	}
+	cache := bank.Cache{
+		BankFile: filepath.Base(bankFile), SHA256: digest, Artifact: artifact,
+		ImportedAt: time.Now().UTC().Format(time.RFC3339), Records: records,
+	}
+	if err := bank.SaveCache(filepath.Join(p.cacheDir, "bank-matches.json"), cache); err != nil {
+		return err
+	}
+	matchesData, _ := reportfiles.BankMatchesCSVBytes(cache)
+	if err := reportfiles.AtomicWrite(filepath.Join(p.outDir, "bank-matches.csv"), matchesData, 0o600); err != nil {
+		return err
+	}
+	if err := a.writeStatementRequests(p, report); err != nil {
+		return err
+	}
+	matched, ambiguous, missing := 0, 0, 0
+	for _, record := range records {
+		switch record.Status {
+		case "matched":
+			matched++
+		case "ambiguous":
+			ambiguous++
+		default:
+			missing++
+		}
+	}
+	fmt.Fprintf(a.stdout, "bank rows parsed: %d; matched events: %d; ambiguous: %d; without match: %d\n", len(transactions), matched, ambiguous, missing)
+	fmt.Fprintf(a.stdout, "stored evidence: %s (sha256 %s)\n", artifact, digest)
+	fmt.Fprintf(a.stdout, "wrote %s and %s\n", filepath.Join(p.outDir, "bank-matches.csv"), filepath.Join(p.outDir, "statement-requests.csv"))
+	if !apply {
+		fmt.Fprintln(a.stdout, "review the lists, then rerun with -apply (make bank-import APPLY=1) to attach matched evidence")
+		return nil
+	}
+	return a.applyBankEvidence(p, report, cache, provider)
+}
+
+func (a application) applyBankEvidence(p paths, report model.Report, cache bank.Cache, provider string) error {
+	purchasesPath := filepath.Join(p.dataDir, "purchases.json")
+	purchases, err := input.LoadPurchases(purchasesPath, true)
+	if err != nil {
+		return err
+	}
+	purchases, updated, added := bank.Apply(purchases, report, cache, provider)
+	if updated == 0 && added == 0 {
+		return fmt.Errorf("no corroborated bank matches were confirmed with amount agreement")
+	}
+	if data, err := os.ReadFile(purchasesPath); err == nil {
+		if err := os.WriteFile(purchasesPath+".bak", data, 0o600); err != nil {
+			return err
+		}
+	}
+	if err := input.SavePurchases(purchasesPath, purchases, true); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "attached bank evidence: %d updated purchase(s), %d new purchase(s); rerun make audit\n", updated, added)
+	return nil
+}
+
+func (a application) report(ctx context.Context, p paths, server, includePDF, unredacted bool) error {
 	report, err := a.buildReport(p)
 	if err != nil {
 		return err
@@ -336,9 +523,12 @@ func (a application) report(ctx context.Context, p paths, server, includePDF boo
 	if err := reportfiles.WriteStructured(report, p.outDir, server); err != nil {
 		return err
 	}
+	if err := a.writeStatementRequests(p, report); err != nil {
+		return err
+	}
 	fmt.Fprintf(a.stdout, "wrote report for %d UTXOs to %s\n", len(report.UTXOs), p.outDir)
 	if includePDF {
-		return a.pdf(ctx, p)
+		return a.pdf(ctx, p, unredacted)
 	}
 	return nil
 }
@@ -418,7 +608,7 @@ func (a application) exampleWith(ctx context.Context, p paths, deps exampleDepen
 	if err := reportfiles.WriteStructured(report, p.outDir, false); err != nil {
 		return err
 	}
-	return a.pdf(ctx, p)
+	return a.pdf(ctx, p, true)
 }
 
 func (a application) testNode(ctx context.Context, p paths) error {
@@ -486,11 +676,24 @@ func (a application) testNodeWith(ctx context.Context, p paths, deps testNodeDep
 		return fmt.Errorf("real first-transfer policy cutoff did not produce a review-required incomplete trace")
 	}
 	fmt.Fprintln(a.stdout, "verified real policy cutoff produces a review-required boundary")
-	resolutions, resolvedChain, err := client.ResolveAddresses(ctx, []string{"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"})
-	if err != nil {
-		return err
+	var resolutions []core.AddressResolution
+	var resolvedChain model.Chain
+	for attempt := 0; ; attempt++ {
+		resolutions, resolvedChain, err = deps.resolve(ctx, client, []string{"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"})
+		if err == nil {
+			break
+		}
+		// A live node can connect a block between the scan's start and end tip
+		// checks. Retry a few times; every other failure is fatal.
+		if attempt >= 2 || !strings.Contains(err.Error(), "chain tip changed") {
+			return err
+		}
 	}
-	if len(resolutions) != 1 || resolvedChain != tip {
+	// A live node may advance its tip between the initial ChainTip and address
+	// resolution. That is a newer consistent snapshot, not corruption. A lower
+	// height or a same-height hash change is a reorg and must be rejected.
+	if len(resolutions) != 1 || resolvedChain.BestHeight < tip.BestHeight ||
+		(resolvedChain.BestHeight == tip.BestHeight && resolvedChain.BestBlock != tip.BestBlock) {
 		return fmt.Errorf("real current-UTXO address resolution returned an inconsistent snapshot")
 	}
 	exists, height, note, err := client.ConfirmTransaction(ctx, firstTransfer)

@@ -28,14 +28,15 @@ type cliRPCRequest struct {
 }
 
 type cliFakeCore struct {
-	t        *testing.T
-	server   *httptest.Server
-	fixtures map[string]fixtures.Fixture
-	tip      fixtures.Fixture
-	version  int
-	chain    string
-	ibd      bool
-	pruned   bool
+	t         *testing.T
+	server    *httptest.Server
+	fixtures  map[string]fixtures.Fixture
+	tip       fixtures.Fixture
+	tipOffset int64
+	version   int
+	chain     string
+	ibd       bool
+	pruned    bool
 
 	mu             sync.Mutex
 	calls          []string
@@ -135,7 +136,7 @@ func (fake *cliFakeCore) result(call cliRPCRequest) (any, error) {
 	switch call.Method {
 	case "getblockchaininfo":
 		return map[string]any{
-			"chain": fake.chain, "blocks": fake.tip.BlockHeight, "headers": fake.tip.BlockHeight,
+			"chain": fake.chain, "blocks": fake.tip.BlockHeight + fake.tipOffset, "headers": fake.tip.BlockHeight + fake.tipOffset,
 			"bestblockhash": fake.tip.BlockHash, "initialblockdownload": fake.ibd, "pruned": fake.pruned,
 		}, nil
 	case "getnetworkinfo":
@@ -205,7 +206,7 @@ func (fake *cliFakeCore) result(call cliRPCRequest) (any, error) {
 				}
 			}
 		}
-		return map[string]any{"success": true, "height": fake.tip.BlockHeight, "bestblock": fake.tip.BlockHash, "unspents": unspents}, nil
+		return map[string]any{"success": true, "height": fake.tip.BlockHeight + fake.tipOffset, "bestblock": fake.tip.BlockHash, "unspents": unspents}, nil
 	case "gettxout":
 		if len(call.Params) != 3 || call.Params[0] != firstTransfer || call.Params[1] != float64(0) {
 			return nil, fmt.Errorf("unexpected gettxout params %#v", call.Params)

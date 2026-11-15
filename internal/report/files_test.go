@@ -30,6 +30,9 @@ func TestStructuredExportsAndHTMLPrivacy(t *testing.T) {
 	if err := WriteStructured(report, dir, false); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "statement-requests.csv"), []byte("event_type,event_id\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"report.json", "report.html", "report.csv", "report.svg"} {
 		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil || len(data) == 0 {
@@ -98,6 +101,9 @@ func TestBundleAndPDF(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	report := testReport()
 	if err := WriteStructured(report, dir, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "statement-requests.csv"), []byte("event_type,event_id\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	purchases := model.PurchaseFile{SchemaVersion: 1, Purchases: []model.Purchase{{ID: "buy"}}}

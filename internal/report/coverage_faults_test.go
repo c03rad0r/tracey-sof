@@ -131,14 +131,14 @@ func TestCoverageHTMLMarshalFailureStages(t *testing.T) {
 func validStructuredSteps() structuredSteps {
 	data := func() ([]byte, error) { return []byte("ok"), nil }
 	return structuredSteps{
-		json: data, csv: data, evidenceCSV: data, html: data, svg: data,
+		json: data, csv: data, evidenceCSV: data, purchasesCSV: data, purchasesUnmatchedCSV: data, purchaseDatesCSV: data, purchaseMonthsCSV: data, purchaseYearsCSV: data, exchangeGapsCSV: data, exchangeOutflowsCSV: data, exchangeGapMonthsCSV: data, exchangeOutflowMonthsCSV: data, html: data, svg: data,
 		atomicWrite: func(string, []byte, os.FileMode) error { return nil },
 	}
 }
 
 func TestCoverageStructuredFailureStages(t *testing.T) {
 	failure := func() ([]byte, error) { return nil, errors.New("step failure") }
-	cases := []string{"json", "csv", "evidence", "html", "svg"}
+	cases := []string{"json", "csv", "evidence", "purchases", "purchases-unmatched", "purchase-dates", "purchase-months", "purchase-years", "exchange-gaps", "exchange-outflows", "exchange-gap-months", "exchange-outflow-months", "html", "svg"}
 	for _, stage := range cases {
 		t.Run(stage, func(t *testing.T) {
 			steps := validStructuredSteps()
@@ -149,6 +149,24 @@ func TestCoverageStructuredFailureStages(t *testing.T) {
 				steps.csv = failure
 			case "evidence":
 				steps.evidenceCSV = failure
+			case "purchases":
+				steps.purchasesCSV = failure
+			case "purchases-unmatched":
+				steps.purchasesUnmatchedCSV = failure
+			case "purchase-dates":
+				steps.purchaseDatesCSV = failure
+			case "purchase-months":
+				steps.purchaseMonthsCSV = failure
+			case "purchase-years":
+				steps.purchaseYearsCSV = failure
+			case "exchange-gaps":
+				steps.exchangeGapsCSV = failure
+			case "exchange-outflows":
+				steps.exchangeOutflowsCSV = failure
+			case "exchange-gap-months":
+				steps.exchangeGapMonthsCSV = failure
+			case "exchange-outflow-months":
+				steps.exchangeOutflowMonthsCSV = failure
 			case "html":
 				steps.html = failure
 			case "svg":
@@ -159,7 +177,7 @@ func TestCoverageStructuredFailureStages(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "report.svg", "report.html"} {
+	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "exchange-payouts-unaccounted.csv", "exchange-outflows-unaccounted.csv", "exchange-payout-months.csv", "exchange-outflow-months.csv", "report.svg", "report.html"} {
 		steps := validStructuredSteps()
 		steps.atomicWrite = func(path string, _ []byte, _ os.FileMode) error {
 			if filepath.Base(path) == name {

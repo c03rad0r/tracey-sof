@@ -178,7 +178,13 @@ func buildEvaluationGraph(trace model.Trace, annotations model.AnnotationFile) (
 		if transaction.TxID == "" || transaction.TxID != mapTxID {
 			return nil, fmt.Errorf("transaction map key %q does not match transaction txid %q", mapTxID, transaction.TxID)
 		}
-		g.transaction(mapTxID)
+		transactionNode := g.transaction(mapTxID)
+		if transaction.BlockTime > 0 {
+			transactionNode.BlockTime = time.Unix(transaction.BlockTime, 0).UTC().Format(time.RFC3339)
+		}
+		if transaction.BlockHeight > 0 {
+			transactionNode.Height = transaction.BlockHeight
+		}
 		seenOutputs := make(map[uint32]struct{}, len(transaction.Outputs))
 		for _, output := range transaction.Outputs {
 			if _, exists := seenOutputs[output.Index]; exists {
@@ -193,6 +199,8 @@ func buildEvaluationGraph(trace model.Trace, annotations model.AnnotationFile) (
 			node.Address = output.Address
 			node.ValueSats = output.ValueSats
 			node.ScriptType = output.ScriptType
+			node.BlockTime = transactionNode.BlockTime
+			node.Height = transactionNode.Height
 			g.addEdge(node.ID, transactionNodeID(mapTxID), "funded_by")
 		}
 	}
@@ -463,6 +471,61 @@ func evidenceStatuses(purchases []model.Purchase, boundaries []model.Boundary) (
 	return result, unmatched
 }
 
+// pruneBoundaryOutputs drops output nodes that belong to a transaction whose
+// ancestry was deliberately not expanded (policy stop, purchase boundary,
+// coinbase). Keeping every output of a 300-600 output exchange batch makes the
+// graph unreadable without adding provenance information: the stopped
+// transaction is the review boundary, not its siblings.
+func (g *evaluationGraph) pruneBoundaryOutputs() {
+	boundaryTx := map[string]bool{}
+	boundaryOutpointTx := map[string]bool{}
+	for id := range g.boundaries {
+		switch {
+		case strings.HasPrefix(id, "tx:"):
+			boundaryTx[strings.TrimPrefix(id, "tx:")] = true
+		case strings.HasPrefix(id, "out:") && len(id) >= 68:
+			boundaryOutpointTx[id[4:68]] = true
+		}
+	}
+	expanded := map[string]bool{}
+	referenced := map[string]bool{}
+	for _, edge := range g.edges {
+		if edge.Kind == "input" {
+			expanded[strings.TrimPrefix(edge.From, "tx:")] = true
+			referenced[edge.To] = true
+		}
+	}
+	for id, node := range g.nodes {
+		if node.Kind != "output" || node.Owned || node.TerminalReason != "" || referenced[id] {
+			continue
+		}
+		prune := false
+		for _, parent := range g.outgoing[id] {
+			if !strings.HasPrefix(parent, "tx:") {
+				continue
+			}
+			txid := strings.TrimPrefix(parent, "tx:")
+			if boundaryTx[txid] || (boundaryOutpointTx[txid] && !expanded[txid]) {
+				prune = true
+				break
+			}
+		}
+		if !prune {
+			continue
+		}
+		delete(g.nodes, id)
+		for key, edge := range g.edges {
+			if edge.From == id || edge.To == id {
+				delete(g.edges, key)
+			}
+		}
+	}
+	g.outgoing = make(map[string][]string, len(g.nodes))
+	for _, edge := range g.edges {
+		g.outgoing[edge.From] = append(g.outgoing[edge.From], edge.To)
+	}
+}
+
 func finalizedGraph(g *evaluationGraph) model.Graph {
 	graph := model.Graph{
 		Nodes: make([]model.GraphNode, 0, len(g.nodes)),
@@ -599,6 +662,7 @@ func Evaluate(trace model.Trace, purchases []model.Purchase, annotations model.A
 		report.Warnings = append(report.Warnings, warning)
 	}
 	sort.Strings(report.Warnings)
+	graph.pruneBoundaryOutputs()
 	report.Graph = finalizedGraph(graph)
 	return report, nil
 }

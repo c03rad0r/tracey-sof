@@ -2,6 +2,8 @@
 
 All files are local JSON with `schema_version: 1`. The schemas under `schema/` document the shape; the Go validator additionally enforces network, checksums, duplicate IDs, private-key rejection, artifact hashes, and safe paths.
 
+The public repository contains no financial inputs. The Makefile reads a private tree at `$HOME/tracey-inputs` by default; run `make inputs` once to create it, or set `TRACEY_INPUTS` to another private directory. Paths written below as `data/`, `cache/` and `out/` mean `$TRACEY_INPUTS/data`, `$TRACEY_INPUTS/cache` and `$TRACEY_INPUTS/out`. Never commit that tree, and do not put real values in the example files under `examples/`.
+
 ## `data/owned.json`
 
 List any combination of current addresses, explicit UTXOs, descriptors, and xpub configurations. Duplicate or overlapping declarations are merged by exact outpoint while retaining all associated owner IDs.
@@ -242,11 +244,61 @@ Manual purchase links can be added with an exact `target` (txid, `txid:vout`, or
 
 A rejection excludes that candidate only at that target. It does not erase purchase records or reinterpret unrelated trace branches. Labels and notes are user assertions; a label called “ATM” by itself does not create a provenance boundary.
 
+## Wallet labels and fiat amounts (BIP-329)
+
+Sparrow and other BIP-329 wallets export labels as JSON Lines. Import them instead of editing `annotations.json` by hand:
+
+```sh
+make labels-import LABELS=~/Downloads/wallet-labels.jsonl
+make validate
+make report
+```
+
+The importer merges without discarding existing notes and maps `tx`, `addr`,
+`output` and `input` records to the matching annotation map; `input` records only
+fill outpoints that no received-output label already describes. `xpub` records go
+to the `xpubs` map and appear as keystore labels in the report metadata.
+
+Optional wallet metadata is copied verbatim for display:
+
+```json
+{
+  "label": "example receive",
+  "value_sats": 100000,
+  "fiat": {"USD": "0.50"},
+  "rate": {"USD": "63504.42"},
+  "time": "2024-01-15T12:00:00Z",
+  "height": 123456,
+  "keypath": "/0/3",
+  "origin": "wpkh([a1b2c3d4/84h/0h/0h])"
+}
+```
+
+`fiat` is the wallet's recorded value at transaction time (`fmv` in BIP-329) and
+`rate` the wallet's recorded exchange rate. They are display-only, are never
+fetched from a price service, and never affect provenance status or trace
+boundaries. Ancestors with no imported label show no fiat line; the tool does not
+estimate one.
+
+Reports show sats, BTC and wallet-recorded fiat in the graph, the graph table,
+the static SVG and the PDF. Reports are generated with identifiers and amounts
+visible by default for review; set `UNREDACTED=0` to produce a redacted copy:
+
+```sh
+make audit                  # unredacted (default)
+make report                 # unredacted (default)
+UNREDACTED=0 make audit     # [redacted] placeholders for sharing
+```
+
+The standalone HTML embeds the full report data either way; redaction only
+changes the display.
+
 ## Commands
 
 ```sh
 make node-check                  # connectivity and chain capabilities only
 make validate                    # local JSON and artifact checks
+make labels-import LABELS=...     # merge a Sparrow/BIP-329 JSONL label export
 make intake                      # extract purchase candidates from data/inbox
 make resolve-intake             # resolve candidates against current UTXOs
 make review-intake              # list staged candidates
@@ -254,12 +306,184 @@ make promote-intake             # merge accepted candidates into purchases.json
 make discover                    # current UTXO set and target funding tx cache
 make trace                       # exact backward ancestry from cached targets
 make report                      # analysis and HTML/JSON/CSV/SVG/PDF without rediscovery
+make overview                    # one printable overview: gaps first, blocks newest to oldest
+make pdf                         # printable PDF with identifiers and amounts visible
 make audit                       # all of the above with a stable chain snapshot
 make ui                          # labels and local graph at 127.0.0.1:8765
+make graphs                      # graph-all.svg + one focused SVG per UTXO
 make export                      # accountant.zip and manifest
 make example                     # public mainnet fixture example; no Core needed
 ```
 
 `report` reuses cached trace data and current label/note annotations, so labels can be reviewed without another chain scan. `export` regenerates reports before bundling them, including the latest annotations. **Changing `purchases.json`, `purchase_links`, or `trace-policy.json` requires a fresh `make audit`.** A fresh trace is needed both to stop at newly confirmed evidence and to resume beyond evidence that has been rejected; rejecting a purchase cannot conjure ancestors that the old trace never fetched. `SOF_LISTEN=127.0.0.1:8766 make ui` chooses another loopback port.
+
+### Purchase statement days
+
+Every `make report` also writes these bank-statement helpers:
+
+- `out/purchases.csv` — one row per purchase: statement date, UTC timestamp,
+  local date, matched-to-current-ancestry flag, provider, sats/BTC, fiat (when
+  supplied), txids, outpoints, notes;
+- `out/purchases-unmatched.csv` — only purchases absent from the traced
+  current-UTXO ancestry, with an explicit `match_status` column;
+- `out/purchase-dates.csv` — one row per statement day with purchase count,
+  total sats/BTC, providers, purchase IDs and UTC days;
+- `out/purchase-months.csv` — one row per year/month with counts and totals;
+- `out/purchase-years.csv` — one row per year with counts and totals.
+
+The **statement date** is `statement_date` when a purchase record supplies it,
+otherwise the purchase timestamp in the host local timezone. Set
+`SOF_TIMEZONE=Europe/Berlin` (or another IANA zone) to make that explicit; the
+UTC timestamp is always preserved in the CSV. Block time is the on-chain payout
+time and can differ from the bank debit date, so check ±1 day or download the
+monthly statement. The loopback HTML report and the PDF include the same list as
+a “Purchase days for bank statements” table plus “Purchase months” and
+“Unmatched purchases” tables, and the CSVs are included in `accountant.zip`.
+“Unmatched” means the purchase has exact on-chain identifiers but is not part of
+the current UTXOs' ancestry; it remains a valid purchase record.
+
+```json
+{"id": "purchase-2024-01-15", "date": "2024-01-15T12:00:00Z",
+ "statement_date": "2024-01-16", "provider": "Example Exchange", "...": "..."}
+```
+
+`statement_date` is optional (`YYYY-MM-DD`) and is validated.
+
+### Bank statement import and proof placeholders
+
+`make report` always writes `out/statement-requests.csv`: one row per purchase
+record and per unaccounted inbound exchange payout. Rows without bank evidence
+are placeholders with `status=request_physical_statement` and an
+`action=request physical statement for YYYY-MM`, so the export tells you exactly
+which physical statements to request.
+
+Import a bank CSV export to match bank debits against on-chain events. The file is parsed locally with exact integer-cent arithmetic, at most 64 MiB; malformed or overlarge inputs are rejected instead of being silently ignored.
+
+```sh
+# First, review candidate matches in out/bank-matches.csv:
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv"
+
+# Then explicitly confirm one reviewed kind|ID key, copied from that file:
+make bank-import BANK="$TRACEY_INPUTS/data/export.csv" \
+  APPLY=1 CONFIRM="purchase|purchase-2024-01-15"
+```
+
+- The CSV is copied below `data/evidence/bank/` with mode 0600 and its SHA-256;
+  it becomes an artifact only on explicitly confirmed purchase records.
+- Matching uses merchant keywords supplied with `MERCHANT=...` (required; put
+  machine-specific values in `$TRACEY_INPUTS/node.env`) and a ±3-day window
+  (`-window-days`). There is no personal default.
+- Merchant and date produce a **candidate**, not purchase proof. Candidates have
+  `status=candidate_needs_confirmation`; apply only after corroboration or an
+  explicit human confirmation. `APPLY=1` without a valid `CONFIRM` key is rejected.
+- If a purchase already has an expected fiat amount/currency, a different bank
+  amount/currency is not silently substituted. Unknown amounts can be filled only
+  after explicit confirmation. Inbound payouts become purchase records with fiat
+  and `statement_date`; rerun `make audit` so the trace stops at the new purchase
+  boundaries.
+- `out/bank-matches.csv` records candidate status (`matched`, `ambiguous`,
+  `missing`) and the separate `confirmed` decision. Its SHA column is populated
+  only for confirmed matches. `out/statement-requests.csv` uses
+  `matched_bank_evidence` only after confirmation or another bank artifact.
+- `make statement-requests` regenerates the placeholder list from the cache.
+
+The bank file contains IBAN/account data. It stays under the private data
+directory outside the repository, but `accountant.zip` includes it as evidence
+when matched; redact it before sharing outside your accountant. Bank history
+older than the online export window cannot be matched and stays as a placeholder
+for a physical statement request.
+
+### Exchange evidence gaps
+
+`make report` also writes the exchange-side gap lists derived from the trace:
+
+- `out/exchange-payouts-unaccounted.csv` — inbound exchange payouts stopped by a
+  policy rule (for example `policy_output_count`) with no matched purchase
+  evidence. Columns: direction, date, height, txid, outpoint, amount, counterparty,
+  label, boundary reason, evidence status, suggested record, affected UTXOs.
+- `out/exchange-outflows-unaccounted.csv` — provider-labelled transactions that
+  send coins to a counterparty and return change. They need sale/deposit records,
+  not purchase evidence.
+- `out/exchange-payout-months.csv` and `out/exchange-outflow-months.csv` — the
+  same rows grouped by year/month.
+
+```sh
+make gaps          # print both lists with separate section headers
+make gaps-inflow   # inbound payouts only (+ month count)
+make gaps-outflow  # outbound transfers only (+ month count)
+make gaps-check    # exit non-zero while unaccounted inbound payouts remain
+make gaps-check-all # also fail on outbound transfers without sale evidence
+```
+
+Each list is independent: the CSV files and month summaries are already
+separate, and the terminal output now prints `== INFLOW ==` and `== OUTFLOW ==`
+sections with their own counts and month totals. `-inflow` / `-outflow` select a
+single section; `-strict` gates on inbound data and `-strict -include-outflows`
+gates on both.
+
+**The source-of-funds documentation job is complete when `make gaps-check`
+passes** (the inbound payout list is empty). A payout disappears from the list
+when its exact txid/outpoint is added to `purchases.json` and the trace stops at
+that purchase boundary. Outflows are advisory: they need sale records, not
+purchases, and do not gate completeness.
+
+Provider label matching is configurable with `SOF_EXCHANGE_LABELS` (for example
+`SOF_EXCHANGE_LABELS="exchange-a,exchange-b"`). There is no built-in provider
+list; put machine-specific labels in `$TRACEY_INPUTS/node.env`. Labels are user
+assertions; verify them against exchange statements.
+
+### Printable overview
+
+`make overview` writes a single print-oriented document, `out/overview.html` and
+`out/overview.pdf`:
+
+1. **Evidence gaps first** — inbound exchange payouts without purchase evidence
+   and outbound transfers without sale evidence, each with height, amount,
+   counterparty and the record to request.
+2. **Chronology, newest block first** — one section per block height present in
+   the trace, walking down through transactions and outputs to the purchase
+   rows that are the sources of the sats. Undated rows come last.
+3. **Current UTXOs** with documentation and trace status.
+
+The chronology's **Status** column marks `unspent` for a current UTXO output,
+`funds unspent output` for a transaction that creates a current UTXO, and
+`inbound gap` / `outbound gap` for the same transactions listed in the evidence
+gap sections. A row can carry more than one marker, for example
+`funds unspent output · outbound gap`.
+
+Purchases appear once as source rows; an output that is itself a purchase is not
+duplicated. Boundary outputs are collapsed as in the graph exports, so the
+document stays readable. Type sizes are print-normal (10 pt body, 9 pt tables);
+content flows across as many A4 pages as needed instead of shrinking. The
+overview is rendered with identifiers and amounts visible, matching the default
+unredacted review output. `out/graph-height-all.svg` remains the vector source
+graph referenced at the end of the document.
+
+`make export` includes `overview.pdf` and `overview.html` in `accountant.zip`
+whenever they exist; it does not require a browser when they are absent.
+
+### Static graph exports
+
+`make graphs` writes two graph families under `out/`:
+
+- hop layout (default): `graph-all.svg` and `graph-<txid12>-<vout>.svg`
+- block-height layout: `graph-height-all.svg` and
+  `graph-height-<txid12>-<vout>.svg`
+
+SVGs are vector files, so zoom is unlimited in a browser or Inkscape. Per-UTXO
+files only contain that target's ancestry. In the block-height layout the x-axis
+is one column per **distinct block height present in the graph**; heights with no
+traced transaction are skipped, so the axis is compact but strictly chronological
+(oldest left, newest right). Headers show `height · date`. Nodes without a known
+height (graph, purchase, then BIP-329 annotation) are grouped in a leading
+`unknown height` column. Same-height edges are drawn as short vertical connectors
+without labels. The loopback UI has a `Layout: hops` / `Layout: height` toggle.
+
+Outputs belonging to a transaction whose ancestry was deliberately not expanded
+(policy stop, purchase boundary, coinbase) are collapsed so a 300–600 output
+exchange batch does not dominate the layout. Each transaction card shows its
+txid, block date and rate; each output card shows the address, outpoint,
+BTC/sats, wallet-recorded fiat where available, and the owner xpub branch.
+Purchase boundaries are labelled with the provider.
 
 Typical overrides are `TRACE_MAX_DEPTH`, `TRACE_MAX_TRANSACTIONS`, `CHROMIUM`, `DATA_DIR`, `OUT_DIR`, `CACHE_DIR`, and `ENV_FILE`. Environment hop/transaction limits apply only when `data/trace-policy.json` is absent. The chain tip is checked before and after discovery/tracing; a reorganized or partially synced node is not allowed to produce a current-UTXO audit silently.

@@ -18,7 +18,7 @@
       <p class="subtitle">Exact transaction ancestry, presented separately from user-supplied purchase evidence and labels.</p>
     </div>
     <div class="header-actions" aria-label="Report controls">
-      <button id="privacy-toggle" type="button" aria-pressed="true">Redaction: on</button>
+      <button id="privacy-toggle" type="button" aria-pressed="false">Redaction: off</button>
       <button id="download-svg" type="button">Download SVG</button>
       <button id="print-report" type="button">Print / Save PDF</button>
     </div>
@@ -91,6 +91,7 @@
         <div class="graph-controls" aria-label="Graph zoom and pan controls">
           <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
           <button id="zoom-reset" type="button">Reset view</button>
+          <button id="layout-toggle" type="button">Layout: hops</button>
           <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
           <button id="pan-left" type="button" aria-label="Pan graph left">←</button>
           <button id="pan-right" type="button" aria-label="Pan graph right">→</button>
@@ -114,11 +115,47 @@
         <div class="table-scroll">
           <table>
             <caption>Graph nodes after current UTXO filters</caption>
-            <thead><tr><th scope="col">Kind</th><th scope="col">Blockchain identifier / address</th><th scope="col">Value</th><th scope="col">User label</th><th scope="col">Purchase evidence</th></tr></thead>
+            <thead><tr><th scope="col">Kind</th><th scope="col">Date</th><th scope="col">Outpoint / txid</th><th scope="col">Address</th><th scope="col">Amount (BTC)</th><th scope="col">USD at time</th><th scope="col">User label</th><th scope="col">Purchase evidence</th></tr></thead>
             <tbody id="graph-table-body"></tbody>
           </table>
         </div>
       </details>
+    </section>
+
+    <section class="panel" aria-labelledby="statement-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">BANK STATEMENT DOWNLOADS</p>
+          <h2 id="statement-heading">Purchase days for bank statements</h2>
+        </div>
+      </div>
+      <p class="muted">Every recorded purchase grouped by statement day. The statement date is the explicit <code>statement_date</code> when supplied, otherwise the purchase timestamp in the host local timezone. Use the UTC column in the CSV when they differ, and confirm against the merchant receipt or bank debit date.</p>
+      <p id="statement-summary" class="muted"></p>
+      <div class="table-scroll">
+        <table>
+          <caption>Purchases grouped by statement day</caption>
+          <thead><tr><th scope="col">Statement date</th><th scope="col">Purchases</th><th scope="col">Total (BTC)</th><th scope="col">Providers</th><th scope="col">Purchase IDs</th></tr></thead>
+          <tbody id="statement-days-body"></tbody>
+        </table>
+      </div>
+      <p class="muted">Machine-readable files: <code>out/purchases.csv</code> (one row per purchase) and <code>out/purchase-dates.csv</code> (one row per day).</p>
+      <h3>Purchase months</h3>
+      <div class="table-scroll">
+        <table>
+          <caption>Purchases grouped by year and month</caption>
+          <thead><tr><th scope="col">Year</th><th scope="col">Month</th><th scope="col">Purchases</th><th scope="col">Total (BTC)</th></tr></thead>
+          <tbody id="statement-months-body"></tbody>
+        </table>
+      </div>
+      <h3>Unmatched purchases</h3>
+      <p class="muted">These records have exact on-chain identifiers but are not part of the ancestry of the current UTXOs. They remain valid purchases; the coins were spent or moved elsewhere before the current holdings formed.</p>
+      <div class="table-scroll">
+        <table>
+          <caption>Purchases absent from current-UTXO ancestry</caption>
+          <thead><tr><th scope="col">Statement date</th><th scope="col">Total (BTC)</th><th scope="col">Purchase ID</th><th scope="col">Status</th></tr></thead>
+          <tbody id="unmatched-purchases-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="panel" aria-labelledby="timeline-heading">

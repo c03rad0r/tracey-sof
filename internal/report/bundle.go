@@ -126,7 +126,7 @@ type zipArchiveFunc func(map[string][]byte) ([]byte, error)
 
 func bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir string, archive zipArchiveFunc) error {
 	files := map[string][]byte{"README-accountant.txt": []byte(accountantReadme)}
-	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "report.html", "report.svg", "report.pdf"} {
+	for _, name := range []string{"report.json", "report.csv", "evidence.csv", "purchases.csv", "purchases-unmatched.csv", "purchase-dates.csv", "purchase-months.csv", "purchase-years.csv", "exchange-payouts-unaccounted.csv", "exchange-outflows-unaccounted.csv", "exchange-payout-months.csv", "exchange-outflow-months.csv", "statement-requests.csv", "report.html", "report.svg", "report.pdf"} {
 		data, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
 			return fmt.Errorf("bundle requires %s; run audit and PDF generation first: %w", name, err)
@@ -163,6 +163,23 @@ func bundle(report model.Report, purchases model.PurchaseFile, dataDir, outDir s
 		files["inputs/annotations.json"] = data
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	if data, err := os.ReadFile(filepath.Join(outDir, "bank-matches.csv")); err == nil {
+		files["bank-matches.csv"] = data
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	// The printable overview is optional so that export does not need a
+	// browser; include it whenever the user generated it.
+	for _, name := range []string{"overview.html", "overview.pdf"} {
+		data, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		files[name] = data
 	}
 	files["manifest.sha256"] = manifest(files)
 	data, err := archive(files)

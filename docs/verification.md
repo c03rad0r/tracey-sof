@@ -8,7 +8,12 @@ make test
 make coverage
 make privacy-check
 make example
+
+# Optional advisory scan of all refs; current-tree scanning above gates release:
+make history-leak-check
 ```
+
+`make privacy-check` and `make leak-check` gate the working tree for private paths, personal identifiers, wallet fingerprints, IBAN/SEPA-like identifiers, provider names, and prohibited endpoints. `make leak-check` is also included in `make verify`. `make history-leak-check` additionally reports findings across every ref but is advisory while the policy for documented historical path examples is finalized. JavaScript coverage requires Node 22+; set `NODE=/path/to/node` if the default is older.
 
 `make test` does not query a chain service or use wallet data. It includes raw-mainnet fixture normalization, provenance behavior, fake-Core RPC tests, JSON/evidence tests, report/ZIP checks, and real Chromium report rendering. Browser artifacts are created under the project `.cache` directory because Chromium snap packages may not be able to read arbitrary `/tmp` paths.
 
@@ -23,11 +28,11 @@ make node-check
 make test-node
 ```
 
-The fixture verifier fetches each documented confirmed transaction by txid and containing block and compares raw bytes with the committed fixture. It does not ask for a wallet or owned address. The configured user on `dq05` uses a non-default data directory; plain `bitcoin-cli` there is inappropriate because it looks for the cookie in the wrong place. The application was verified through an IPv6-loopback SSH tunnel and a temporary, local, mode-0600 cookie which was removed after testing. Do not expose a remote Core RPC port publicly.
+The fixture verifier fetches each documented confirmed transaction by txid and containing block and compares raw bytes with the committed fixture. It does not ask for a wallet or owned address. The configured user on the live node uses a non-default data directory; plain `bitcoin-cli` there is inappropriate because it looks for the cookie in the wrong place. The application was verified through an IPv6-loopback SSH tunnel and a temporary, local, mode-0600 cookie which was removed after testing. Do not expose a remote Core RPC port publicly.
 
 ## Live integration result
 
-On 2026-11-10, against the synchronized Bitcoin Core v31.1.0 node on `dq05`:
+On 2026-11-10, against the synchronized Bitcoin Core v31.1.0 node on the live node:
 
 - Both `txindex` and the basic block-filter index were synchronized.
 - All three committed mainnet raw transactions matched byte-for-byte at blocks 9, 170, and 600000.
@@ -39,8 +44,11 @@ On 2026-11-10, against the synchronized Bitcoin Core v31.1.0 node on `dq05`:
 - `accountant.zip` contained methodology, all report formats, the three JSON inputs, and a manifest. Nine manifest hashes independently matched nine payload files (the tenth entry is the manifest itself).
 - A real loopback UI test saved a transaction annotation and rejected a cross-origin annotation attempt.
 - A real policy cutoff against the first-transfer fixture produced an incomplete trace with `review_required=true`, without fetching the parent beyond the cutoff.
-- A live address and transaction resolution check runs through the configured Core node; it uses only current-UTXO, raw-transaction, and outpoint lookups.
+- A live address and transaction resolution check runs through the configured Core node; it uses only current-UTXO, raw-transaction, and outpoint lookups. Because a live node can connect a block during a scan, `test-node` retries the address-resolution snapshot up to three times on a tip change; a reorg or same-height hash change still fails.
 - Intake tests cover PDF text extraction, image/PDF OCR fallbacks, CSV/TSV/TXT/JSON parsing, missing OCR binaries, malformed staging files, current-UTXO resolution, review decisions, promotion, artifact hashes, and every atomic-write failure stage.
+- Bank CSV tests cover exact integer-cent amounts (including large values, decimal and thousands separators), quoted fields, malformed/oversized input, ambiguous candidates, explicit confirmation keys, and fiat mismatch preservation. Unconfirmed bank matches do not create provenance or fiat evidence.
+- A Make environment test confirms `MERCHANT`, `PROVIDER`, and `SOF_EXCHANGE_LABELS` reach `bank-import` and `gaps` but not `provision`, including inherited environment values.
+- Existing private directories, credentials, and evidence files were moved into `$TRACEY_INPUTS`, with seed and pre-existing files preserved under `migration-original`. The working-tree privacy scan passes; full-history scanning is separately advisory.
 - Provisioning playbooks pass `ansible-playbook --syntax-check`; `scripts/core-check.sh` and `scripts/core-release.sh` pass `sh -n`.
 - The Core release helper was exercised with a temporary GPG key and fake release artifacts: missing keys, untrusted fingerprints, and checksum failures are refused, while a trusted signature writes a mode-0600 `.verified` marker.
 - Bitcoin Core 32.1 was independently downloaded and GPG-verified against official builder key `152812300785C96444D3334D17565732E08E5E41` (`achow101`). The verified tarball SHA-256 is `61545c17c3120fb7412f896d248b11993af04ec8817aad3649c55b2afb044963`. The staged client reports v32.1.0.
@@ -53,7 +61,7 @@ The smoke inputs, RPC credentials, reports, and caches used for this test are ex
 
 ## Coverage interpretation
 
-`web/graph.js` is gated at 100% statement, branch, function, and line coverage with Node's built-in coverage runner. The current complete run has 100.00% statement coverage across all first-party Go packages (3131/3131 statements) after the purchase-intake addition, and the JavaScript graph utilities also pass 100% statement/branch/function/line gates. `make release-check` passed on 2026-11-11 and again on 2026-11-12 after provisioning remediation against the live `dq05` node, including address and transaction resolution. Coverage is necessary but not sufficient: real mainnet and browser integration checks remain mandatory.
+`web/graph.js` is gated at 100% statement, branch, function, and line coverage with Node's built-in coverage runner. The current complete run has 100.00% statement coverage across all first-party Go packages (4506/4506 statements), including archive merge and evidence-confirmation tests; the JavaScript graph utilities also pass 100% statement/branch/function/line gates. `make release-check` passed on 2026-11-15 against the live node, including archive feasibility, address/transaction resolution, and public-fixture checks. Coverage is necessary but not sufficient: real mainnet and browser integration checks remain mandatory.
 
 ## Limitations reviewers should check
 

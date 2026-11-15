@@ -34,6 +34,7 @@ type testNodeDependencies struct {
 	newEvidence func(model.PurchaseFile, model.AnnotationFile) (*provenance.Evidence, error)
 	trace       func(context.Context, provenance.TransactionSource, []model.TargetRef, *provenance.Evidence, model.Chain, provenance.Limits) (model.Trace, error)
 	evaluate    func(model.Trace, []model.Purchase, model.AnnotationFile, time.Time) (model.Report, error)
+	resolve     func(context.Context, *core.Client, []string) ([]core.AddressResolution, model.Chain, error)
 }
 
 func defaultTestNodeDependencies() testNodeDependencies {
@@ -42,5 +43,8 @@ func defaultTestNodeDependencies() testNodeDependencies {
 		newEvidence: provenance.NewEvidence,
 		trace:       provenance.Trace,
 		evaluate:    provenance.Evaluate,
+		resolve: func(ctx context.Context, client *core.Client, addresses []string) ([]core.AddressResolution, model.Chain, error) {
+			return client.ResolveAddresses(ctx, addresses)
+		},
 	}
 }

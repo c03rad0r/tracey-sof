@@ -21,8 +21,10 @@ test("CommonJS export is dependency-free, complete, and immutable", function () 
   assert.equal(Object.isFrozen(graph), true);
   assert.deepEqual(Object.keys(graph).sort(), [
     "filterUtxos",
+    "formatBtc",
     "formatSats",
     "layoutGraph",
+    "layoutGraphHeight",
     "normalizeGraph",
     "selectGraph",
     "uniqueStrings",
@@ -179,16 +181,16 @@ test("layoutGraph stacks disconnected roots deterministically in the current-UTX
   const source = { nodes: [node("current-b"), node("current-a")], edges: [] };
   const layout = graph.layoutGraph(source);
   assert.equal(layout.maxDepth, 0);
-  assert.equal(layout.width, 384);
-  assert.equal(layout.height, 380);
+  assert.equal(layout.width, 444);
+  assert.equal(layout.height, 484);
   assert.deepEqual(layout.positions.map(function (position) {
     return { id: position.id, depth: position.depth, row: position.row, x: position.x, y: position.y };
   }), [
     { id: "current-b", depth: 0, row: 0, x: 32, y: 32 },
-    { id: "current-a", depth: 0, row: 1, x: 32, y: 190 }
+    { id: "current-a", depth: 0, row: 1, x: 32, y: 242 }
   ]);
-  assert.equal(layout.positions[0].width, 240);
-  assert.equal(layout.positions[0].height, 108);
+  assert.equal(layout.positions[0].width, 300);
+  assert.equal(layout.positions[0].height, 150);
 });
 
 test("layoutGraph puts current outputs right and progressively older ancestry left", function () {
@@ -209,13 +211,13 @@ test("layoutGraph puts current outputs right and progressively older ancestry le
   };
   const layout = graph.layoutGraph(source);
   assert.equal(layout.maxDepth, 4);
-  assert.equal(layout.width, 1664);
-  assert.equal(layout.height, 222);
+  assert.equal(layout.width, 1964);
+  assert.equal(layout.height, 274);
   assert.deepEqual(layout.positions.map(function (position) { return position.depth; }), [0, 1, 2, 3, 4]);
   for (let index = 1; index < layout.positions.length; index += 1) {
     assert.ok(layout.positions[index].x < layout.positions[index - 1].x);
   }
-  assert.equal(layout.positions[0].x, 32 + 4 * 320);
+  assert.equal(layout.positions[0].x, 32 + 4 * 380);
   assert.equal(layout.positions[4].x, 32);
 });
 
@@ -283,13 +285,69 @@ test("normalizeGraph and selection preserve duplicate edges without causing dupl
   assert.equal(layout.positions[1].depth, 1);
 });
 
-test("formatSats handles integer, negative, zero, and malformed numeric values", function () {
-  assert.equal(graph.formatSats(0), "0 sats");
+test("layoutGraphHeight orders columns by distinct height and skips gaps", function () {
+  const source = {
+    nodes: [
+      node("late", { block_time: "2024-02-05T00:00:00Z" }),
+      node("early-b", { block_time: "2023-04-20T00:00:00Z" }),
+      node("early-a", { block_time: "2023-04-02T00:00:00Z" }),
+      node("unknown"),
+      node("unknown-b"),
+      node("no-date")
+    ],
+    edges: [edge("early-a", "early-b")]
+  };
+  const meta = new Map([
+    ["late", { height: 851299, date: "2024-02-05" }],
+    ["early-b", { height: 800000, date: "2023-04-20" }],
+    ["early-a", { height: 800000, date: "2023-04-02" }],
+    ["no-date", { height: 900000, date: "" }]
+  ]);
+  const layout = graph.layoutGraphHeight(source, function (entry) { return meta.get(entry.id) || {}; });
+  assert.deepEqual(layout.headers.map(function (header) { return header.label; }),
+    ["unknown height", "800,000 · 2023-04-02", "851,299 · 2024-02-05", "900,000"]);
+  assert.equal(layout.width, 340 * 4 + 40);
+  assert.equal(layout.height, 20 + 2 * 210);
+  const positions = new Map(layout.positions.map(function (position) { return [position.id, position]; }));
+  assert.equal(positions.get("unknown").x, 190);
+  assert.equal(positions.get("unknown-b").x, 190);
+  assert.ok(positions.get("unknown").y < positions.get("unknown-b").y);
+  assert.equal(positions.get("early-a").x, 190 + 340);
+  assert.equal(positions.get("early-b").y, 110 + 210);
+  assert.equal(positions.get("late").x, 190 + 2 * 340);
+  const repeat = graph.layoutGraphHeight(source, function (entry) { return meta.get(entry.id) || {}; });
+  assert.deepEqual(layout, repeat);
+  assert.deepEqual(graph.layoutGraphHeight(source, undefined).headers, [{ label: "unknown height", x: 50, y: 20 }]);
+  const invalid = graph.layoutGraphHeight(source, function (entry) {
+    return entry.id === "late" ? { height: "x", date: 5 } : null;
+  });
+  assert.equal(invalid.headers.length, 1);
+  assert.equal(invalid.headers[0].label, "unknown height");
+  const zero = graph.layoutGraphHeight(source, function () { return { height: 0, date: "" }; });
+  assert.equal(zero.headers[0].label, "unknown height");
+  const negative = graph.layoutGraphHeight(source, function () { return { height: -7, date: "" }; });
+  assert.equal(negative.headers[0].label, "unknown height");
+  assert.deepEqual(graph.layoutGraphHeight(undefined, undefined),
+    { nodes: [], edges: [], positions: [], headers: [], width: 0, height: 0, maxDepth: -1 });
+});
+
+test("formatSats handles integer, negative, zero, and malformed numeric values", function () {  assert.equal(graph.formatSats(0), "0 sats");
   assert.equal(graph.formatSats(123456789), "123,456,789 sats");
   assert.equal(graph.formatSats(-1234567), "-1,234,567 sats");
   assert.equal(graph.formatSats(Number.MAX_SAFE_INTEGER), "9,007,199,254,740,991 sats");
   for (const value of [undefined, null, "100", 1.25, NaN, Infinity, -Infinity,
     Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1, 100n]) {
     assert.equal(graph.formatSats(value), "—");
+  }
+});
+
+test("formatBtc renders exact eight-decimal bitcoin amounts", function () {
+  assert.equal(graph.formatBtc(0), "0.00000000 BTC");
+  assert.equal(graph.formatBtc(780), "0.00000780 BTC");
+  assert.equal(graph.formatBtc(15633335), "0.15633335 BTC");
+  assert.equal(graph.formatBtc(100000000), "1.00000000 BTC");
+  assert.equal(graph.formatBtc(-150), "-0.00000150 BTC");
+  for (const value of [undefined, null, "100", 1.25, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 100n]) {
+    assert.equal(graph.formatBtc(value), "—");
   }
 });

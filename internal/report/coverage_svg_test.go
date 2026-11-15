@@ -104,6 +104,160 @@ func TestCoverageSVGCompleteLayoutStaticAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestCoverageSVGWalletLabelsAndFiat(t *testing.T) {
+	purchaseAmount := int64(670344)
+	report := model.Report{
+		Graph: model.Graph{
+			Nodes: []model.GraphNode{
+				{ID: "out-current", Kind: "output", Outpoint: "aaaa:0", Address: "bc1qowned", ValueSats: 780, Owned: true},
+				{ID: "tx-rate", Kind: "transaction", TxID: "feed", BlockTime: "2026-08-03T21:57:31Z", Height: 960919},
+				{ID: "out-eur", Kind: "output", Outpoint: "bbbb:1", Address: "bc1qeur", ValueSats: -150},
+				{ID: "out-fallback", Kind: "output", Outpoint: "cccc:2", Address: "bc1qthird", ValueSats: 5},
+				{ID: "terminal", Kind: "terminal", TerminalReason: "policy_output_count"},
+				{ID: "bare", Kind: "output"},
+				{ID: "out-purchase", Kind: "output", Outpoint: "dddd:3", PurchaseIDs: []string{"purchase-1"}},
+				{ID: "out-purchase-nil", Kind: "output", Outpoint: "eeee:4", ValueSats: 5, PurchaseIDs: []string{"purchase-2"}},
+			},
+			Edges: []model.GraphEdge{{From: "out-current", To: "tx-rate", Kind: "funded_by", ValueSats: 780}},
+		},
+		Purchases: []model.Purchase{
+			{ID: "purchase-1", Date: "2024-02-01T20:32:24Z", Provider: "Example Exchange", AmountSats: &purchaseAmount},
+			{ID: "purchase-2", Date: "2024-01-01T00:00:00Z", Provider: "Example Exchange"},
+		},
+		Annotations: model.AnnotationFile{
+			Transactions: map[string]model.Annotation{"feed": {Label: "wallet tx", Rate: map[string]string{"USD": "63504.42"}}},
+			Outpoints: map[string]model.Annotation{
+				"aaaa:0": {Label: "test pocket", Fiat: map[string]string{"USD": "0.64"}, Time: "2026-08-03T21:57:31Z"},
+				"bbbb:1": {Fiat: map[string]string{"EUR": "0.50"}},
+				"cccc:2": {},
+			},
+			Addresses: map[string]model.Annotation{"bc1qthird": {Label: "address label"}},
+		},
+	}
+	first, err := SVGBytes(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(first)
+	for _, want := range []string{
+		"test pocket", "wallet tx", "address label",
+		"0.00000780 BTC · 780 sats", "-0.00000150 BTC · -150 sats",
+		"$0.64 USD · 2026-08-03 (wallet-recorded)",
+		"0.50 EUR (wallet-recorded)",
+		"rate $63504.42 USD/BTC (wallet-recorded)",
+		"policy_output_count",
+		"2026-08-03 · depth",
+		"0.00670344 BTC · 670344 sats",
+		"2024-02-01 · depth",
+		"Example Exchange purchase",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("annotated SVG missing %q", want)
+		}
+	}
+	second, err := SVGBytes(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("annotated SVG output is not deterministic")
+	}
+}
+
+func TestSVGBytesHeightUsesDistinctBlockColumns(t *testing.T) {
+	purchaseAmount := int64(500)
+	report := model.Report{
+		Graph: model.Graph{
+			Nodes: []model.GraphNode{
+				{ID: "out-new", Kind: "output", BlockTime: "2024-02-05T10:00:00Z", Height: 960934, ValueSats: 10},
+				{ID: "out-old", Kind: "output", BlockTime: "2023-04-20T10:00:00Z", Height: 840000, ValueSats: 20},
+				{ID: "out-old-2", Kind: "output", BlockTime: "2023-04-25T10:00:00Z", Height: 840000, ValueSats: 25},
+				{ID: "tx-old", Kind: "transaction", TxID: strings.Repeat("c", 64), BlockTime: "2023-04-20T10:00:00Z", Height: 840000},
+				{ID: "out-purchase", Kind: "output", PurchaseIDs: []string{"purchase-1"}},
+				{ID: "tx-annotation", Kind: "transaction", TxID: strings.Repeat("a", 64)},
+				{ID: "out-outpoint", Kind: "output", Outpoint: "bbbb:1"},
+				{ID: "out-address", Kind: "output", Outpoint: "cccc:2", Address: "bc1qaddress"},
+				{ID: "out-undated", Kind: "output"},
+			},
+			Edges: []model.GraphEdge{
+				{From: "out-new", To: "tx-annotation", Kind: "funded_by"},
+				{From: "out-old", To: "tx-old", Kind: "funded_by"},
+				{From: "out-undated", To: "out-new", Kind: "input"},
+			},
+		},
+		Purchases: []model.Purchase{{ID: "purchase-1", Date: "2024-02-01T20:32:24Z", Height: 850000, Provider: "Example Exchange", AmountSats: &purchaseAmount}},
+		Annotations: model.AnnotationFile{
+			Transactions: map[string]model.Annotation{strings.Repeat("a", 64): {Height: 700000, Time: "2022-01-15T00:00:00Z"}},
+			Outpoints:    map[string]model.Annotation{"bbbb:1": {Height: 710000, Time: "2021-12-01T00:00:00Z"}},
+			Addresses:    map[string]model.Annotation{"bc1qaddress": {Height: 720000, Time: "2020-11-01T00:00:00Z"}},
+		},
+	}
+	first, err := SVGBytesHeight(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(first)
+	for _, want := range []string{
+		`<text class="column-header" x="50" y="20">unknown height</text>`,
+		"700,000 · 2022-01-15", "710,000 · 2021-12-01", "720,000 · 2020-11-01",
+		"840,000 · 2023-04-20", "850,000 · 2024-02-01", "960,934 · 2024-02-05",
+		`class="edge edge-vertical"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("height SVG missing %q", want)
+		}
+	}
+	if strings.Index(text, ">840,000 · 2023-04-20</text>") > strings.Index(text, ">960,934 · 2024-02-05</text>") {
+		t.Error("height columns are not in chronological order")
+	}
+	second, err := SVGBytesHeight(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("height SVG output is not deterministic")
+	}
+}
+
+func TestSVGBytesHeightErrors(t *testing.T) {
+	if _, err := SVGBytesHeight(model.Report{Graph: model.Graph{Nodes: []model.GraphNode{{ID: "", Kind: "output"}}}}); err == nil {
+		t.Fatal("expected a height layout error")
+	}
+}
+
+func TestLayoutGraphHeightErrors(t *testing.T) {
+	for _, graph := range []model.Graph{
+		{Nodes: []model.GraphNode{{ID: "", Kind: "output"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: ""}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}, {ID: "a", Kind: "output"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}, Edges: []model.GraphEdge{{From: "a", To: "missing", Kind: "input"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}, Edges: []model.GraphEdge{{From: "missing", To: "a", Kind: "input"}}},
+		{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}, Edges: []model.GraphEdge{{From: "a", To: "a", Kind: "bogus"}}},
+	} {
+		if _, _, _, _, err := layoutGraphHeight(graph, nil, nil); err == nil {
+			t.Errorf("expected an error for graph %+v", graph)
+		}
+	}
+	nodes, width, height, headers, err := layoutGraphHeight(
+		model.Graph{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}},
+		map[string]int64{"a": 100}, map[string]string{"a": "2023-04-02"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || width != 380 || height != 240 || len(headers) != 1 || headers[0].label != "100 · 2023-04-02" {
+		t.Fatalf("layout = %d nodes, %dx%d, headers %+v", len(nodes), width, height, headers)
+	}
+	unknown, _, _, unknownHeaders, err := layoutGraphHeight(
+		model.Graph{Nodes: []model.GraphNode{{ID: "a", Kind: "output"}}},
+		map[string]int64{"a": -5}, nil)
+	if err != nil || unknownHeaders[0].label != "unknown height" || len(unknown) != 1 {
+		t.Fatalf("negative height layout = %v, %+v, %v", unknown, unknownHeaders, err)
+	}
+	if empty, _, _, headers, err := layoutGraphHeight(model.Graph{}, nil, nil); err != nil || len(empty) != 0 || len(headers) != 0 {
+		t.Fatalf("empty layout = %v, %v, %v", empty, headers, err)
+	}
+}
+
 func TestCoverageSVGDisconnectedLayoutDeterministicAndComplete(t *testing.T) {
 	report := model.Report{Graph: model.Graph{Nodes: []model.GraphNode{
 		{ID: "owned", Kind: "output", Owned: true, Label: "selected output"},
