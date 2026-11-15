@@ -37,7 +37,7 @@ func PrintHTML(ctx context.Context, outDir, htmlName, pdfName, browser string, o
 	}
 	outDir = absoluteOut
 	if browser == "" {
-		for _, candidate := range []string{"chromium", "chromium-browser", "google-chrome"} {
+		for _, candidate := range []string{"google-chrome", "chromium", "chromium-browser"} {
 			if path, err := exec.LookPath(candidate); err == nil {
 				browser = path
 				break

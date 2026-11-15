@@ -33,7 +33,12 @@ func browserReport() model.Report {
 
 func chromiumPath(t *testing.T) string {
 	t.Helper()
-	for _, candidate := range []string{"chromium", "chromium-browser", "google-chrome"} {
+	if configured := os.Getenv("CHROMIUM"); configured != "" {
+		if _, err := os.Stat(configured); err == nil {
+			return configured
+		}
+	}
+	for _, candidate := range []string{"google-chrome", "chromium", "chromium-browser"} {
 		if path, err := exec.LookPath(candidate); err == nil {
 			return path
 		}

@@ -8,7 +8,7 @@ Implementation and release verification are complete for the current source tree
 
 ## Quick start
 
-Requirements: Go, Make, a fully synchronized Bitcoin Core 29+ node, and a modern browser. Chromium is required for the default local PDF-generation step. All application network access is confined to your configured Core node and loopback UI.
+Requirements: Go, Make, a fully synchronized Bitcoin Core 29+ node, and a modern browser. Chromium is required for the default local PDF-generation step. `make verify` requires Node 22+ for the JavaScript coverage flags; set `NODE=/path/to/node` if your default is older. All application network access is confined to your configured Core node and loopback UI.
 
 Optional host provisioning is available through Ansible. It installs Go, Node, Chromium, Poppler, Tesseract, and related tools. Bitcoin Core installation and updates use separate verification-gated targets:
 
