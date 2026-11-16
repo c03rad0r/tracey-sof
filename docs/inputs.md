@@ -96,10 +96,11 @@ Artifact paths are relative to `data/`, cannot escape that directory, and are ch
 
 ## Purchase intake
 
-Scanned receipts, address lists, and other purchase sources are staged in `data/inbox/` and extracted into `data/purchase-intake.json`. The intake file is **not** consumed by `make audit`; only explicitly promoted records enter `data/purchases.json`.
+Scanned receipts, address lists, and other purchase sources are staged in `$TRACEY_INPUTS/data/inbox/` (created by `make inputs`) and extracted into `data/purchase-intake.json`. The intake file is **not** consumed by `make audit`; only explicitly promoted records enter `data/purchases.json`.
 
 ```sh
-make intake INBOX=./data/inbox
+make inputs
+make intake
 make resolve-intake
 make review-intake
 make promote-intake
@@ -401,9 +402,14 @@ for a physical statement request.
 as candidates:
 
 ```sh
-make statement-import \
-  STATEMENT_DIR="$TRACEY_INPUTS/data/bank-statements"
+make inputs   # creates $TRACEY_INPUTS/data/bank-statements if missing
+cp /path/to/statements/*.pdf "$TRACEY_INPUTS/data/bank-statements/"
+make statement-import
 ```
+
+`STATEMENT_DIR` overrides the default `$TRACEY_INPUTS/data/bank-statements`.
+Text extraction runs locally; when a PDF has no usable text layer, it falls back
+to `pdftoppm` + `tesseract` OCR.
 
 - Only checking-account statements are imported (`Girokonto` and
   `checking-zero`); savings accounts and non-statement PDFs are skipped.

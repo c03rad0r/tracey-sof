@@ -45,6 +45,8 @@ the printable overview.
 - [x] Extend bank transaction/match/cache metadata.
 - [x] Extend `bank.Apply` for per-record PDF artifacts.
 - [x] Add `statement-import` CLI and Make target.
+- [x] Default `STATEMENT_DIR` to `$TRACEY_INPUTS/data/bank-statements` and create
+      it (and `data/inbox`) from `make inputs` with mode 700.
 - [x] Preserve CSV matches when PDFs are imported.
 - [x] Add statement coverage and evidence sections to the overview.
 - [x] Add purchase statement status flags.

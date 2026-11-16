@@ -14,6 +14,7 @@ DATA_DIR ?= $(TRACEY_INPUTS)/data
 OUT_DIR ?= $(TRACEY_INPUTS)/out
 CACHE_DIR ?= $(TRACEY_INPUTS)/cache
 INBOX ?= $(DATA_DIR)/inbox
+STATEMENT_DIR ?= $(DATA_DIR)/bank-statements
 SOF := ./bin/sof
 NODE ?= node
 ENV_FILE ?= $(TRACEY_INPUTS)/node.env
@@ -70,15 +71,16 @@ init: ## Create project-local Go test temporary space
 	@mkdir -p $(TMPDIR)
 
 inputs: ## Create the private inputs tree and seed it from examples
-	@mkdir -p "$(DATA_DIR)" "$(CACHE_DIR)" "$(OUT_DIR)" "$(TRACEY_INPUTS)/notes"
+	@mkdir -p "$(DATA_DIR)" "$(CACHE_DIR)" "$(OUT_DIR)" "$(TRACEY_INPUTS)/notes" "$(INBOX)" "$(STATEMENT_DIR)"
 	@for name in owned annotations purchases; do \
 		test -e "$(DATA_DIR)/$$name.json" || cp "examples/$$name.example.json" "$(DATA_DIR)/$$name.json"; \
 	done
 	@test -e "$(DATA_DIR)/trace-policy.json" || cp examples/trace-policy.example.json "$(DATA_DIR)/trace-policy.json"
 	@test -e "$(ENV_FILE)" || { cp examples/node.env.example "$(ENV_FILE)"; chmod 600 "$(ENV_FILE)"; }
-	@chmod 700 "$(TRACEY_INPUTS)" "$(DATA_DIR)" "$(CACHE_DIR)" "$(OUT_DIR)" "$(TRACEY_INPUTS)/notes"
+	@chmod 700 "$(TRACEY_INPUTS)" "$(DATA_DIR)" "$(CACHE_DIR)" "$(OUT_DIR)" "$(TRACEY_INPUTS)/notes" "$(INBOX)" "$(STATEMENT_DIR)"
 	@chmod -R go-rwx "$(TRACEY_INPUTS)"
 	@printf 'Private inputs ready under %s\n' "$(TRACEY_INPUTS)"
+	@printf 'Statement PDFs: %s\nIntake sources: %s\n' "$(STATEMENT_DIR)" "$(INBOX)"
 
 setup: init vendor ## Install pinned development dependencies locally
 	@mkdir -p $(TMPDIR)
@@ -187,7 +189,7 @@ bank-import: build ## Import reviewed bank matches with explicit confirmations
 	$(SOF) bank-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -bank-file "$(BANK)" -merchant "$(MERCHANT)" -provider "$(PROVIDER)" $(if $(filter 1 true yes,$(APPLY)),-apply,) -confirm "$(CONFIRM)"
 
 statement-import: build ## Import reviewed PDF statements with explicit confirmations
-	@test -n "$(STATEMENT_DIR)" || { echo 'STATEMENT_DIR is required (directory of bank statement PDFs)'; exit 1; }
+	@test -d "$(STATEMENT_DIR)" || { echo "STATEMENT_DIR does not exist: $(STATEMENT_DIR); run make inputs"; exit 1; }
 	@test -n "$(MERCHANT)" || { echo 'MERCHANT is required; set it in $(ENV_FILE)'; exit 1; }
 	@test -n "$(PROVIDER)" || { echo 'PROVIDER is required; set it in $(ENV_FILE)'; exit 1; }
 	$(SOF) statement-import -data-dir $(DATA_DIR) -cache-dir $(CACHE_DIR) -out-dir $(OUT_DIR) -statement-dir "$(STATEMENT_DIR)" -institution "$(INSTITUTION)" -merchant "$(MERCHANT)" -provider "$(PROVIDER)" $(if $(filter 1 true yes,$(APPLY)),-apply,) -confirm "$(CONFIRM)"

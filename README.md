@@ -55,6 +55,13 @@ make overview
 
 Merchant/date matching alone does not establish purchase evidence. See [`docs/inputs.md`](docs/inputs.md) for exact confirmation/corroboration semantics and available reporting targets. Reports are visible by default for local review; use `UNREDACTED=0 make report` before sharing identifiers. Sensitive source receipts, bank exports, credentials, and accountant bundles remain sensitive after display redaction.
 
+`make inputs` also creates two private drop directories:
+
+- `$TRACEY_INPUTS/data/bank-statements/` — statement PDFs for `make statement-import`
+- `$TRACEY_INPUTS/data/inbox/` — receipts, images, CSV/TXT/JSON for `make intake`
+
+Both process files locally. PDFs use `pdftotext -layout` first and fall back to `pdftoppm` + `tesseract` OCR when needed.
+
 The service listens on `127.0.0.1` by default. Never expose the annotation server or Bitcoin RPC directly to the public internet. Xpubs, addresses, purchase records, and their combined transaction graph are sensitive financial information. See [`docs/inputs.md`](docs/inputs.md) for complete JSON examples and [`docs/bitcoin-core.md`](docs/bitcoin-core.md) for node configuration.
 
 Outputs are written below `$TRACEY_INPUTS/out`. `make example` runs without a node or private data. `make help` lists all supported commands. For the manual Core 32.1/RPC/input/unmount setup and readiness checklist, see [`HANDOVER.md`](HANDOVER.md).

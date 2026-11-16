@@ -175,12 +175,19 @@ Create the private tree and replace **every placeholder** with actual public dat
 
 ```sh
 make inputs
-install -d -m 700 "$TRACEY_INPUTS/data/inbox"
 install -m 600 examples/owned.example.json "$TRACEY_INPUTS/data/owned.json"
 install -m 600 examples/purchases.example.json "$TRACEY_INPUTS/data/purchases.json"
 install -m 600 examples/annotations.example.json "$TRACEY_INPUTS/data/annotations.json"
 install -m 600 examples/trace-policy.example.json "$TRACEY_INPUTS/data/trace-policy.json"
 ```
+
+`make inputs` creates two private drop directories with mode 700:
+
+- `$TRACEY_INPUTS/data/bank-statements/` — put bank-statement PDFs here, then
+  run `make statement-import`. Text is extracted with `pdftotext -layout`; if
+  that is insufficient, local `pdftoppm` + `tesseract` OCR is used.
+- `$TRACEY_INPUTS/data/inbox/` — put receipts, images, CSV/TXT/JSON here, then
+  run `make intake`.
 
 Read `docs/inputs.md` for formats and `docs/bitcoin-core.md` for node settings. Keep only public keys and addresses: never put seeds, WIF, xprvs, private descriptors, or passphrases anywhere in the project.
 
